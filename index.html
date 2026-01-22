@@ -1,0 +1,4598 @@
+<!DOCTYPE html>
+<!--
+  投資規劃與績效追蹤器 v3.2
+  更新日期：2026-01-22
+
+  v3.2 更新：
+  - 簡化「歷史回顧」：移除近期/長期績效計算（需要密集資料才有意義）
+  - 移除 IRR 計算（需要完整現金流紀錄）
+  - 保留：總投入、目前資產、總獲利、投資期間
+
+  v3.1 更新：
+  - 新增「快速記錄今日收益」功能
+  - 新增多用戶支援（可切換不同用戶）
+  - 新增連線測試功能
+  - 修正先租後買買房年計算
+  - Google Sheet 作為唯一資料來源
+
+  功能整合：
+  - 歷史資料追蹤（Google Sheet 雙向同步）
+  - 投資規劃模擬（住房策略、退休規劃）
+  - 圖表合併（歷史軌跡 + 預測線）
+  - 里程碑追蹤
+-->
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>投資規劃與績效追蹤器 v3.2</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ================================================================
+         * CSS 樣式區塊
+         * ================================================================
+         *
+         * 結構概覽：
+         *   1. CSS 變數 (:root)          - 顏色、圓角、陰影等全域變數
+         *   2. 基礎樣式                   - body, header, container
+         *   3. 步驟區塊 (.step)           - 可折疊的設定面板
+         *   4. 表單元素                   - input, select, label
+         *   5. 按鈕樣式 (.btn)            - primary, secondary, danger
+         *   6. 狀態訊息 (.status)         - success, error, loading
+         *   7. 歷史回顧 (.history-summary) - 總覽、紀錄列表
+         *   8. 快速記錄 (.quick-record)   - 快速輸入區
+         *   9. 圖表區域 (.chart-container) - Chart.js 圖表
+         *   10. 里程碑 (.milestones)      - 目標達成列表
+         *   11. 響應式設計 (@media)       - 手機版適配
+         *
+         * 顏色系統：
+         *   --color-primary: #00d4ff (青色，主色)
+         *   --color-success: #2ecc71 (綠色，正向)
+         *   --color-warning: #f39c12 (橙色，警告)
+         *   --color-danger:  #e74c3c (紅色，危險)
+         * ================================================================ */
+
+        /* --------------------------------
+         * 1. CSS 變數
+         * -------------------------------- */
+        :root {
+            --color-bg: #1a1a2e;
+            --color-bg-light: #16213e;
+            --color-primary: #00d4ff;
+            --color-text: #eee;
+            --color-text-muted: #888;
+            --color-success: #2ecc71;
+            --color-warning: #f39c12;
+            --color-danger: #e74c3c;
+            --color-purple: #9b59b6;
+            --color-orange: #e67e22;
+            --color-blue: #3498db;
+            --radius: 12px;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        /* --------------------------------
+         * 2. 基礎樣式
+         * -------------------------------- */
+        * {
+            box-sizing: border-box;
+            font-family: 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            /* 支援 iPhone 瀏海和底部安全區域 */
+            padding-left: max(20px, env(safe-area-inset-left));
+            padding-right: max(20px, env(safe-area-inset-right));
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            background: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-light) 100%);
+            min-height: 100vh;
+            color: var(--color-text);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: var(--color-primary);
+            text-shadow: 0 0 20px rgba(0,212,255,0.5);
+            margin: 0;
+            font-size: 2em;
+        }
+
+        .header .subtitle {
+            color: var(--color-text-muted);
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .user-info-summary {
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 20px;
+            display: inline-flex;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .user-info-summary .separator {
+            color: rgba(255,255,255,0.3);
+        }
+
+        .user-info-summary strong {
+            color: var(--color-primary);
+        }
+
+        .container {
+            max-width: 1500px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 25px;
+        }
+
+        /* --------------------------------
+         * 3. 步驟區塊 (.step)
+         * 可折疊的設定面板，每個步驟有不同顏色
+         * 點擊 header 可展開/收合
+         * -------------------------------- */
+        .step {
+            background: rgba(255,255,255,0.08);
+            border-radius: var(--radius);
+            margin-bottom: 15px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .step-header {
+            padding: 12px 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.2s;
+        }
+
+        .step-header:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .step-number {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .step-title {
+            flex: 1;
+            font-weight: bold;
+            font-size: 1em;
+        }
+
+        .step-toggle {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            transition: transform 0.3s;
+        }
+
+        .step.collapsed .step-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .step-content {
+            padding: 5px 18px 18px 18px;
+            transition: all 0.3s;
+        }
+
+        .step.collapsed .step-content {
+            display: none;
+        }
+
+        /* 各步驟顏色 */
+        .step-data .step-number { background: var(--color-purple); }
+        .step-basic .step-number { background: var(--color-blue); }
+        .step-housing .step-number { background: var(--color-success); }
+        .step-retire .step-number { background: var(--color-orange); }
+        .step-events .step-number { background: var(--color-danger); }
+        .step-tools .step-number { background: var(--color-text-muted); }
+        .step-quick .step-number { background: var(--color-warning); }
+
+        /* --------------------------------
+         * 4. 表單元素
+         * .form-grid: 兩欄式表單佈局
+         * .form-group: 單一表單項目 (label + input)
+         * -------------------------------- */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 10px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: span 2;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            margin-bottom: 4px;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            color: var(--color-text);
+            font-size: 15px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            margin-top: 3px;
+        }
+
+        /* --------------------------------
+         * 5. 按鈕樣式
+         * .btn-primary: 主要操作（藍漸層）
+         * .btn-secondary: 次要操作（半透明）
+         * .btn-danger: 危險操作（紅色）
+         * -------------------------------- */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-blue));
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: var(--color-text);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .btn-danger {
+            background: rgba(231, 76, 60, 0.2);
+            color: var(--color-danger);
+            border: 1px solid var(--color-danger);
+        }
+
+        .btn-danger:hover {
+            background: rgba(231, 76, 60, 0.3);
+        }
+
+        /* --------------------------------
+         * 6. 狀態訊息
+         * 用於顯示操作結果
+         * .success: 綠色（成功）
+         * .error: 紅色（失敗）
+         * .loading: 黃色（載入中）
+         * -------------------------------- */
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .status.success {
+            display: block;
+            background: rgba(46, 204, 113, 0.2);
+            border: 1px solid var(--color-success);
+            color: var(--color-success);
+        }
+
+        .status.error {
+            display: block;
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        .status.loading {
+            display: block;
+            background: rgba(241, 196, 15, 0.2);
+            border: 1px solid var(--color-warning);
+            color: var(--color-warning);
+        }
+
+        /* --------------------------------
+         * 7. 資料來源區塊
+         * Google Sheet 連線設定
+         * -------------------------------- */
+        .data-source-section {
+            margin-bottom: 12px;
+        }
+
+        .data-source-section .section-title {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            margin-bottom: 8px;
+        }
+
+        .data-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .data-buttons .btn {
+            width: 100%;
+        }
+
+        /* --------------------------------
+         * 8. 歷史回顧區塊
+         * 顯示投資總覽（總投入、現值、獲利）
+         * 包含歷史紀錄列表
+         * -------------------------------- */
+        .history-summary {
+            background: rgba(155, 89, 182, 0.15);
+            border: 1px solid var(--color-purple);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .history-summary.active {
+            display: block;
+        }
+
+        .history-summary .title {
+            font-weight: bold;
+            color: var(--color-purple);
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .history-summary .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            text-align: center;
+        }
+
+        .history-summary .stat-item {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .history-summary .stat-label {
+            font-size: 12px;
+            color: var(--color-text-muted);
+        }
+
+        .history-summary .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--color-primary);
+        }
+
+        .history-summary .stat-value.irr {
+            color: var(--color-success);
+        }
+
+        /* 歷史回顧 - 總覽 */
+        .history-overview {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .overview-main {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .overview-item .label {
+            font-size: 11px;
+            color: var(--color-text-muted);
+            display: block;
+        }
+
+        .overview-item .value {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--color-text);
+        }
+
+        .overview-item .value.highlight {
+            color: var(--color-primary);
+        }
+
+        .overview-item .value.profit {
+            color: var(--color-success);
+        }
+
+        .overview-sub {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--color-text-muted);
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .overview-sub strong {
+            color: var(--color-text);
+        }
+
+        .history-summary .apply-btn {
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        /* 歷史紀錄列表 */
+        .history-list-toggle {
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 13px;
+            color: var(--color-text-muted);
+            transition: all 0.2s;
+        }
+
+        .history-list-toggle:hover {
+            background: rgba(0,0,0,0.3);
+            color: var(--color-text);
+        }
+
+        .history-list-container {
+            margin-top: 10px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .history-list-container.expanded {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .history-table {
+            width: 100%;
+            font-size: 12px;
+            border-collapse: collapse;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 6px 8px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .history-table th {
+            background: rgba(0,0,0,0.3);
+            color: var(--color-primary);
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+
+        .history-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .history-table .note {
+            text-align: left;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .history-table .delete-btn {
+            color: var(--color-danger);
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .history-table .delete-btn:hover {
+            opacity: 1;
+        }
+
+        /* --------------------------------
+         * 9. 住房策略區塊
+         * .strategy-options: 策略選擇按鈕（買房/租房/先租後買）
+         * .strategy-config: 各策略的詳細設定
+         * .compare-mode: 買租比較模式
+         * -------------------------------- */
+        .strategy-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .strategy-option {
+            padding: 12px;
+            border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .strategy-option:hover {
+            border-color: rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .strategy-option.selected {
+            border-color: var(--color-success);
+            background: rgba(46, 204, 113, 0.15);
+        }
+
+        .strategy-option .icon {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .strategy-option .name {
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .strategy-option .desc {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            margin-top: 2px;
+        }
+
+        /* 策略設定區塊 */
+        .strategy-config {
+            display: none;
+            padding: 12px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            margin-top: 12px;
+        }
+
+        .strategy-config.active {
+            display: block;
+        }
+
+        .strategy-config h4 {
+            margin: 0 0 12px 0;
+            color: var(--color-success);
+            font-size: 13px;
+        }
+
+        /* 先租後買的兩階段 */
+        .phase-box {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .phase-box h5 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: var(--color-warning);
+        }
+
+        .phase-arrow {
+            text-align: center;
+            color: var(--color-text-muted);
+            padding: 4px 0;
+            font-size: 18px;
+        }
+
+        /* 比較模式 */
+        .compare-mode {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(241, 196, 15, 0.1);
+            border: 1px solid var(--color-warning);
+            border-radius: 10px;
+        }
+
+        .compare-mode h4 {
+            margin: 0 0 8px 0;
+            color: var(--color-warning);
+            font-size: 13px;
+        }
+
+        .compare-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .compare-toggle label {
+            font-size: 12px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255,255,255,0.2);
+            transition: .3s;
+            border-radius: 22px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--color-warning);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+        }
+
+        .compare-options {
+            display: none;
+        }
+
+        .compare-options.active {
+            display: block;
+        }
+
+        .compare-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            font-size: 12px;
+        }
+
+        .compare-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--color-warning);
+        }
+
+        /* --------------------------------
+         * 10. 計算摘要區塊
+         * 顯示住房計算結果（月供、總利息等）
+         * -------------------------------- */
+        .calc-summary {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+
+        .calc-summary .title {
+            color: var(--color-warning);
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .calc-summary .item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 3px 0;
+        }
+
+        .calc-summary .item .value {
+            color: var(--color-primary);
+            font-weight: bold;
+        }
+
+        .calc-summary .highlight {
+            background: rgba(255, 215, 0, 0.15);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .calc-summary .highlight .big {
+            font-size: 18px;
+            color: var(--color-warning);
+            font-weight: bold;
+        }
+
+        /* --------------------------------
+         * 11. 特殊現金流事件
+         * .event-list: 事件列表容器
+         * .event-item: 單一事件（收入/支出）
+         * .quick-btns: 快速新增按鈕（年終、旅遊等）
+         * -------------------------------- */
+        .event-list {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 8px;
+        }
+
+        .event-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            margin-bottom: 4px;
+            font-size: 13px;
+        }
+
+        .event-item .delete-btn {
+            background: var(--color-danger);
+            border: none;
+            color: white;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .quick-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .quick-btn {
+            padding: 6px 12px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            color: var(--color-text);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .quick-btn.income {
+            border-color: var(--color-success);
+            color: var(--color-success);
+        }
+
+        .quick-btn.expense {
+            border-color: var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        .quick-label {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            margin-right: 4px;
+        }
+
+        /* 事件類型切換 */
+        .event-type-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .type-btn {
+            padding: 10px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: transparent;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .type-btn:hover {
+            border-color: rgba(255,255,255,0.4);
+        }
+
+        .type-btn.active[data-type="income"] {
+            border-color: var(--color-success);
+            background: rgba(46, 204, 113, 0.15);
+            color: var(--color-success);
+        }
+
+        .type-btn.active[data-type="expense"] {
+            border-color: var(--color-danger);
+            background: rgba(231, 76, 60, 0.15);
+            color: var(--color-danger);
+        }
+
+        /* 事件項目樣式 */
+        .event-item.income {
+            border-left: 3px solid var(--color-success);
+        }
+
+        .event-item.expense {
+            border-left: 3px solid var(--color-danger);
+        }
+
+        .event-item .event-amount {
+            font-weight: bold;
+        }
+
+        .event-item .event-amount.positive {
+            color: var(--color-success);
+        }
+
+        .event-item .event-amount.negative {
+            color: var(--color-danger);
+        }
+
+        /* --------------------------------
+         * 12. 匯出彈窗（目前未使用）
+         * 原本用於匯出資料，已改為 Sheet 同步
+         * -------------------------------- */
+        .export-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .export-modal-content {
+            background: var(--color-bg-light);
+            border-radius: var(--radius);
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .export-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .export-modal-header h3 {
+            margin: 0;
+            color: var(--color-primary);
+            font-size: 1.1em;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--color-text-muted);
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .close-btn:hover {
+            color: var(--color-text);
+        }
+
+        .export-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .export-tab {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .export-tab:hover {
+            border-color: rgba(255,255,255,0.4);
+        }
+
+        .export-tab.active {
+            border-color: var(--color-primary);
+            background: rgba(0, 212, 255, 0.15);
+            color: var(--color-primary);
+        }
+
+        .export-instructions {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 12px;
+            line-height: 1.6;
+            margin-bottom: 12px;
+            color: var(--color-text-muted);
+        }
+
+        .export-content {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre;
+            overflow-x: auto;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        /* --------------------------------
+         * 13. 快速記錄區塊
+         * ⚠️ 限制說明：
+         *   此功能記錄「累計成本」與「當前資產」的快照
+         *   不適合用來計算精確的時間加權報酬（IRR）
+         *   因為沒有記錄每筆定期定額的投入時間
+         *
+         * 適用場景：
+         *   - 定期記錄資產狀態（如每月底）
+         *   - 追蹤資產成長軌跡
+         *   - 不需精確績效計算的情況
+         * -------------------------------- */
+        .quick-record-section {
+            background: rgba(46, 204, 113, 0.08);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            border-radius: 10px;
+            padding: 14px;
+        }
+
+        .quick-record-section .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--color-success);
+            margin-bottom: 10px;
+        }
+
+        .quick-record-result {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .quick-record-result.active {
+            display: block;
+        }
+
+        .quick-record-result .profit {
+            font-weight: bold;
+        }
+
+        .quick-record-result .profit.positive {
+            color: var(--color-success);
+        }
+
+        .quick-record-result .profit.negative {
+            color: var(--color-danger);
+        }
+
+        /* --------------------------------
+         * 14. Sheet 連接設定
+         * Google Sheet ID 和 Apps Script URL 輸入
+         * -------------------------------- */
+        .sheet-connection-section {
+            margin-top: 12px;
+        }
+
+        .sheet-connection-section .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--color-primary);
+            margin-bottom: 10px;
+        }
+
+        /* 用戶選擇器（最上層） */
+        .user-selector-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .user-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        .user-option {
+            padding: 8px 20px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 20px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            font-size: 13px;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .user-option:hover {
+            border-color: rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .user-option.selected {
+            border-color: var(--color-primary);
+            background: rgba(0, 212, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+
+        .user-option .user-name {
+            font-weight: bold;
+            color: var(--color-text);
+        }
+
+        .user-option.selected .user-name {
+            color: var(--color-primary);
+        }
+
+        .user-option .user-info {
+            font-size: 10px;
+            color: var(--color-text-muted);
+            margin-top: 2px;
+        }
+
+        .user-option.user-add {
+            border-style: dashed;
+            opacity: 0.7;
+        }
+
+        .user-option.user-add:hover {
+            opacity: 1;
+            border-color: var(--color-success);
+        }
+
+        .user-option.user-add .user-name {
+            color: var(--color-success);
+        }
+
+        .user-option {
+            position: relative;
+        }
+
+        .user-delete {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 18px;
+            height: 18px;
+            background: var(--color-danger);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: white;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .user-option:hover .user-delete {
+            opacity: 1;
+        }
+
+        .user-delete:hover {
+            background: #c0392b;
+            transform: scale(1.1);
+        }
+
+        /* 工具區塊 */
+        .tool-section {
+            padding: 12px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .tool-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: var(--color-text-muted);
+        }
+
+        .tool-btn {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: var(--color-text);
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .tool-result {
+            margin-top: 10px;
+            padding: 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .tool-result.active {
+            display: block;
+        }
+
+        /* --------------------------------
+         * 15. 右側面板（圖表與統計）
+         * .chart-panel: 主要圖表區
+         * .stats-panel: 整合里程碑與關鍵年齡預測
+         * -------------------------------- */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 圖表區域 */
+        .chart-panel {
+            background: rgba(255,255,255,0.08);
+            border-radius: var(--radius);
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .chart-panel h2 {
+            margin: 0 0 15px 0;
+            color: var(--color-primary);
+            font-size: 1.4em;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        /* 統計區塊（整合里程碑與年齡預測） */
+        .stats-panel {
+            background: rgba(255,255,255,0.08);
+            border-radius: var(--radius);
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stats-panel h3 {
+            color: var(--color-primary);
+            margin: 0 0 15px 0;
+            font-size: 1.2em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 10px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 14px 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            transition: transform 0.2s;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-item .label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            margin-bottom: 6px;
+        }
+
+        .stat-item .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--color-primary);
+        }
+
+        .stat-item .info {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            margin-top: 4px;
+        }
+
+        /* 里程碑樣式 */
+        .stat-item.milestone-achieved {
+            background: rgba(46, 204, 113, 0.15);
+            border: 1px solid rgba(46, 204, 113, 0.4);
+        }
+
+        .stat-item.milestone-achieved .value {
+            color: var(--color-success);
+        }
+
+        .stat-item.milestone-pending {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-item.milestone-pending .value {
+            color: var(--color-text-muted);
+        }
+
+        /* 關鍵年齡樣式 */
+        .stat-item.age-item {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+
+        .stat-item.highlight-retire {
+            background: rgba(230, 126, 34, 0.15);
+            border: 1px solid rgba(230, 126, 34, 0.5);
+        }
+
+        .stat-item.highlight-retire .label {
+            color: var(--color-orange);
+        }
+
+        /* 分隔線 */
+        .stats-divider {
+            grid-column: 1 / -1;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 5px 0;
+        }
+
+        /* 分析區塊 */
+        .analysis-box {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 12px;
+        }
+
+        .analysis-box.buy { background: rgba(46, 204, 113, 0.15); border: 1px solid var(--color-success); }
+        .analysis-box.rent { background: rgba(155, 89, 182, 0.15); border: 1px solid var(--color-purple); }
+        .analysis-box.compare { background: rgba(241, 196, 15, 0.15); border: 1px solid var(--color-warning); }
+        .analysis-box.retire { background: rgba(230, 126, 34, 0.15); border: 1px solid var(--color-orange); }
+
+        .analysis-box h4 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+        }
+
+        .analysis-box .content {
+            line-height: 1.6;
+        }
+
+        /* --------------------------------
+         * 16. 響應式設計
+         * 三個斷點：1000px（平板橫向）、768px（平板直向）、480px（手機）
+         * -------------------------------- */
+
+        /* === 平板橫向以下 (< 1000px) === */
+        @media (max-width: 1000px) {
+            .container {
+                grid-template-columns: 1fr;
+                padding: 0 15px;
+            }
+
+            .strategy-options {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        /* === 平板直向以下 (< 768px) === */
+        @media (max-width: 768px) {
+            /* 標題區域 */
+            .header h1 {
+                font-size: 1.4em;
+            }
+
+            .header .subtitle {
+                font-size: 0.85em;
+            }
+
+            /* 用戶資訊改為換行顯示 */
+            .user-info-summary {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 6px 12px;
+                font-size: 13px;
+                padding: 10px 12px;
+            }
+
+            .user-info-summary .separator {
+                display: none;
+            }
+
+            /* 用戶選擇器 */
+            .user-selector {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .user-option {
+                padding: 10px 16px;
+                font-size: 14px;
+            }
+
+            /* 表單區域 */
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .form-group.full-width {
+                grid-column: span 1;
+            }
+
+            .form-group label {
+                font-size: 14px;
+            }
+
+            .form-group input, .form-group select {
+                padding: 12px;
+                font-size: 16px; /* 避免 iOS 自動縮放 */
+            }
+
+            /* 步驟區塊 */
+            .step-header {
+                padding: 14px 16px;
+            }
+
+            .step-content {
+                padding: 10px 16px 16px 16px;
+            }
+
+            .step-title {
+                font-size: 1.05em;
+            }
+
+            /* 按鈕加大觸控區域 */
+            .btn {
+                padding: 12px 18px;
+                font-size: 15px;
+                min-height: 44px; /* Apple 建議最小觸控區域 */
+            }
+
+            .data-buttons {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            /* 策略選項 */
+            .strategy-options {
+                grid-template-columns: 1fr;
+            }
+
+            .strategy-option {
+                padding: 14px;
+            }
+
+            .strategy-option .name {
+                font-size: 15px;
+            }
+
+            .strategy-option .desc {
+                font-size: 13px;
+            }
+
+            /* 滑桿加大觸控區域 */
+            input[type="range"] {
+                height: 8px;
+            }
+
+            input[type="range"]::-webkit-slider-thumb {
+                width: 24px;
+                height: 24px;
+            }
+
+            /* 圖表區域 */
+            .chart-panel {
+                padding: 15px;
+            }
+
+            .chart-panel h2 {
+                font-size: 1.2em;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+
+            /* 統計區塊 */
+            .stats-panel {
+                padding: 15px;
+            }
+
+            .stats-panel h3 {
+                font-size: 1.1em;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+
+            .stat-item {
+                padding: 12px 8px;
+            }
+
+            .stat-item .label {
+                font-size: 12px;
+            }
+
+            .stat-item .value {
+                font-size: 16px;
+            }
+
+            /* 歷史回顧 */
+            .history-summary .stats {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .overview-main {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .overview-item .label {
+                font-size: 12px;
+            }
+
+            .overview-item .value {
+                font-size: 18px;
+            }
+
+            /* 快速按鈕 */
+            .quick-btns {
+                gap: 8px;
+            }
+
+            .quick-btn {
+                padding: 10px 14px;
+                font-size: 14px;
+            }
+
+            /* 事件類型切換 */
+            .event-type-toggle {
+                gap: 10px;
+            }
+
+            .type-btn {
+                padding: 12px;
+                font-size: 15px;
+            }
+
+            /* 事件項目 */
+            .event-item {
+                padding: 10px 12px;
+                font-size: 14px;
+            }
+
+            .event-item .delete-btn {
+                width: 28px;
+                height: 28px;
+                font-size: 14px;
+            }
+
+            /* 模態視窗 */
+            .export-modal-content {
+                width: 95%;
+                padding: 15px;
+                max-height: 85vh;
+            }
+
+            .export-modal-header h3 {
+                font-size: 1em;
+            }
+
+            /* 計算摘要 */
+            .calc-summary .item {
+                font-size: 14px;
+                padding: 5px 0;
+            }
+
+            .calc-summary .highlight .big {
+                font-size: 20px;
+            }
+
+            /* 分析區塊 */
+            .analysis-box {
+                padding: 14px;
+                font-size: 13px;
+            }
+        }
+
+        /* === 手機 (< 480px) === */
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .header {
+                padding: 15px 10px;
+            }
+
+            .header h1 {
+                font-size: 1.2em;
+            }
+
+            /* 用戶選擇器垂直排列 */
+            .user-selector-wrapper {
+                margin-top: 10px;
+            }
+
+            .user-selector {
+                flex-direction: column;
+                width: 100%;
+                gap: 8px;
+            }
+
+            .user-option {
+                width: 100%;
+                padding: 12px;
+            }
+
+            /* 容器無間距 */
+            .container {
+                gap: 15px;
+                padding: 0 10px;
+            }
+
+            /* 步驟區塊緊湊 */
+            .step {
+                margin-bottom: 12px;
+            }
+
+            .step-header {
+                padding: 12px 14px;
+            }
+
+            .step-content {
+                padding: 8px 14px 14px 14px;
+            }
+
+            /* 統計格線改為單欄 */
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .stat-item .value {
+                font-size: 15px;
+            }
+
+            /* 圖表更緊湊 */
+            .chart-panel {
+                padding: 12px;
+            }
+
+            .chart-container {
+                height: 250px;
+            }
+
+            /* 隱藏不重要的文字 */
+            .form-hint {
+                font-size: 11px;
+            }
+
+            /* 歷史紀錄表格 */
+            .history-table {
+                font-size: 11px;
+            }
+
+            .history-table th,
+            .history-table td {
+                padding: 5px 4px;
+            }
+
+            .history-table .note {
+                max-width: 50px;
+            }
+
+            /* 快速記錄 */
+            .quick-record-section {
+                padding: 12px;
+            }
+
+            /* 工具區塊 */
+            .tool-section {
+                padding: 10px;
+            }
+
+            .tool-btn {
+                padding: 12px;
+                font-size: 15px;
+            }
+        }
+
+        /* === 觸控設備優化 === */
+        @media (hover: none) and (pointer: coarse) {
+            /* 移除 hover 效果，加大觸控區 */
+            .btn:hover {
+                transform: none;
+            }
+
+            .step-header:hover {
+                background: transparent;
+            }
+
+            .strategy-option:hover {
+                border-color: rgba(255,255,255,0.15);
+                background: transparent;
+            }
+
+            /* 確保刪除按鈕始終可見 */
+            .user-option .user-delete {
+                opacity: 0.7;
+            }
+
+            .history-table .delete-btn {
+                opacity: 1;
+            }
+        }
+
+        /* 滑桿樣式 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 5px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            cursor: pointer;
+        }
+
+        /* 基本資料顯示 */
+        .info-display {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid var(--color-primary);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+
+        .info-display strong {
+            color: var(--color-primary);
+        }
+
+        /* 隱藏的 input */
+        .hidden-input {
+            display: none;
+        }
+    </style>
+</head>
+<!-- ================================================================
+     HTML 結構區塊
+     ================================================================
+
+     頁面佈局：
+       ┌─────────────────────────────────────────────────────┐
+       │                    header                           │
+       │              (標題 + 用戶選擇器)                    │
+       ├──────────────────┬──────────────────────────────────┤
+       │   settings-panel │          right-panel             │
+       │   ⚡ 快速記錄    │   chart-panel (圖表)             │
+       │   1. 投資規劃    │   results-panel (年齡試算)       │
+       │   2. 住房策略    │   milestones-panel (里程碑)      │
+       │   3. 退休規劃    │                                  │
+       │   4. 特殊現金流  │                                  │
+       │   5. 工具        │                                  │
+       └──────────────────┴──────────────────────────────────┘
+
+     資料流向：
+       Sheet → loadFromSheet() → state → updateHistorySummary() → UI
+       UI → syncToSheet() → Sheet
+     ================================================================ -->
+<body>
+    <!-- ===== HEADER: 標題與用戶選擇 ===== -->
+    <div class="header">
+        <h1>💰 投資規劃與績效追蹤器</h1>
+        <div class="subtitle">追蹤歷史績效，規劃財務未來</div>
+        <!-- 用戶資訊摘要（生日、年齡、資產） -->
+        <div class="user-info-summary" id="userInfoSummary">
+            <span>📅 <span id="headerBirthDate">--</span></span>
+            <span class="separator">│</span>
+            <span>🎂 <strong id="headerAge">--</strong> 歲</span>
+            <span class="separator">│</span>
+            <span>💰 <strong id="headerAsset">--</strong> 萬</span>
+        </div>
+        <!-- 用戶選擇器 -->
+        <div class="user-selector-wrapper">
+            <div class="user-selector" id="userSelector">
+                <!-- 由 JavaScript 動態生成 -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 左側設定區 -->
+        <div class="settings-panel">
+
+            <!-- ===== ⚡ 快速記錄 =====
+                 用途：記錄某時間點的「累計成本」與「當前資產」
+
+                 ⚠️ 限制：
+                 - 只記錄快照，不記錄每筆投入的時間
+                 - 因此無法計算精確的時間加權報酬（XIRR）
+                 - 適合：定期記錄資產狀態（如每月底）
+                 - 不適合：需要精確績效計算的情況
+
+                 如需精確 IRR：需記錄每筆定期定額的投入日期
+            -->
+            <div class="step step-quick">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">⚡</div>
+                    <div class="step-title">快速記錄</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>日期</label>
+                            <input type="date" id="quickRecordDate">
+                        </div>
+                        <div class="form-group">
+                            <label>備註</label>
+                            <input type="text" id="quickRecordNote" placeholder="選填">
+                        </div>
+                        <div class="form-group">
+                            <label>本金（萬）</label>
+                            <input type="number" id="quickRecordCost" step="0.1" placeholder="累計投入">
+                        </div>
+                        <div class="form-group">
+                            <label>資產（萬）</label>
+                            <input type="number" id="quickRecordAsset" step="0.1" placeholder="目前市值">
+                        </div>
+                    </div>
+                    <div class="quick-record-result" id="quickRecordResult"></div>
+                    <button class="btn btn-primary" onclick="quickRecordAndSync()" style="width: 100%; margin-top: 8px;">
+                        📤 記錄並同步到 Sheet
+                    </button>
+
+                    <div id="status" class="status"></div>
+
+                    <!-- 📊 歷史回顧 -->
+                    <div class="history-summary" id="historySummary">
+                        <div class="title">📊 歷史回顧</div>
+
+                        <!-- 總覽 -->
+                        <div class="history-overview">
+                            <div class="overview-main">
+                                <div class="overview-item">
+                                    <span class="label">總投入</span>
+                                    <span class="value" id="historyCost">--</span>
+                                </div>
+                                <div class="overview-item">
+                                    <span class="label">目前資產</span>
+                                    <span class="value highlight" id="historyAsset">--</span>
+                                </div>
+                                <div class="overview-item">
+                                    <span class="label">總獲利</span>
+                                    <span class="value profit" id="historyProfit">--</span>
+                                </div>
+                            </div>
+                            <div class="overview-sub">
+                                <span>投資期間：<strong id="historyPeriod">--</strong></span>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary apply-btn" onclick="applyHistoryToSimulator()">
+                            ✨ 套用到模擬器
+                        </button>
+
+                        <!-- 歷史紀錄列表 -->
+                        <div class="history-list-toggle" onclick="toggleHistoryList()">
+                            <span id="historyListToggleText">📋 展開詳細紀錄</span>
+                            <span id="historyListCount"></span>
+                        </div>
+                        <div class="history-list-container" id="historyListContainer">
+                            <table class="history-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>成本</th>
+                                        <th>資產</th>
+                                        <th>備註</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STEP 1: 投資規劃 =====
+                 設定模擬參數：每月投入、預期報酬率、年齡等
+                 「目前資產」由歷史紀錄自動帶入（唯讀）
+            -->
+            <div class="step step-basic">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">1</div>
+                    <div class="step-title">投資規劃</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <!-- 隱藏的 input，供程式內部使用 -->
+                    <input type="hidden" id="currentValue" value="192">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>每月投入（萬）</label>
+                            <input type="number" id="monthlyContribution" value="2.5" min="0" step="0.5">
+                        </div>
+                        <div class="form-group">
+                            <label>年化報酬率</label>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="range" id="annualRate" min="4" max="20" value="10" step="0.5" style="flex: 1;">
+                                <span id="rateDisplay" style="color: var(--color-primary); font-weight: bold; font-size: 14px; min-width: 40px;">10%</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>預測至年齡</label>
+                            <input type="number" id="targetAge" value="65" min="35" max="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STEP 2: 住房策略 =====
+                 四種策略：買房、租房、先租後買、買租比較
+                 計算房貸月供、總利息、機會成本等
+            -->
+            <div class="step step-housing collapsed">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">2</div>
+                    <div class="step-title">住房策略</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <div class="strategy-options">
+                        <div class="strategy-option" data-strategy="none" onclick="selectStrategy('none')">
+                            <div class="icon">🚫</div>
+                            <div class="name">不買房</div>
+                            <div class="desc">無住房支出</div>
+                        </div>
+                        <div class="strategy-option" data-strategy="buy" onclick="selectStrategy('buy')">
+                            <div class="icon">🏡</div>
+                            <div class="name">買房</div>
+                            <div class="desc">設定購房年齡</div>
+                        </div>
+                        <div class="strategy-option" data-strategy="rent" onclick="selectStrategy('rent')">
+                            <div class="icon">🏢</div>
+                            <div class="name">終身租房</div>
+                            <div class="desc">租到退休</div>
+                        </div>
+                        <div class="strategy-option" data-strategy="mixed" onclick="selectStrategy('mixed')">
+                            <div class="icon">🔄</div>
+                            <div class="name">先租後買</div>
+                            <div class="desc">租幾年再買</div>
+                        </div>
+                    </div>
+
+                    <!-- 買房設定 -->
+                    <div class="strategy-config" id="config-buy">
+                        <h4>🏡 買房設定</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>購房年齡</label>
+                                <input type="number" id="buyAge" value="38" min="25" max="70">
+                            </div>
+                            <div class="form-group">
+                                <label>房屋總價（萬）</label>
+                                <input type="number" id="housePrice" value="1000" min="0" step="50">
+                            </div>
+                            <div class="form-group">
+                                <label>頭期款（%）</label>
+                                <input type="number" id="downPaymentPercent" value="20" min="0" max="100" step="5">
+                                <div class="form-hint" id="downPaymentHint">= 200 萬</div>
+                            </div>
+                            <div class="form-group">
+                                <label>貸款利率（%）</label>
+                                <input type="number" id="mortgageRate" value="2.0" min="0" max="10" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label>貸款年限</label>
+                                <input type="number" id="mortgageYears" value="30" min="10" max="40">
+                            </div>
+                            <div class="form-group">
+                                <label>房價年漲（%）</label>
+                                <input type="number" id="houseAppreciation" value="2" min="0" max="10" step="0.5">
+                            </div>
+                        </div>
+                        <div class="calc-summary" id="buySummary">
+                            <div class="title">📊 計算摘要</div>
+                            <div class="item"><span>🏠 預計買房</span><span class="value" id="buyAgeDisplay">--</span></div>
+                            <div class="item"><span>月付金額</span><span class="value" id="monthlyPaymentDisplay">--</span></div>
+                            <div class="item"><span>貸款總額</span><span class="value" id="loanAmountDisplay">--</span></div>
+                            <div class="highlight">
+                                <div style="font-size: 12px; color: #888;">🎯 甜蜜點</div>
+                                <div class="big" id="sweetSpotDisplay">--</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 租房設定 -->
+                    <div class="strategy-config" id="config-rent">
+                        <h4>🏢 終身租房設定</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>月租金（萬）</label>
+                                <input type="number" id="rentMonthly" value="2" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label>年漲幅（%）</label>
+                                <input type="number" id="rentIncrease" value="2" min="0" max="10" step="0.5">
+                            </div>
+                        </div>
+                        <div class="calc-summary">
+                            <div class="title">📊 租金估算</div>
+                            <div class="item"><span>目前月租</span><span class="value" id="currentRentDisplay">--</span></div>
+                            <div class="item"><span>退休時月租</span><span class="value" id="futureRentDisplay">--</span></div>
+                            <div class="item"><span>總租金支出</span><span class="value" id="totalRentDisplay">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- 先租後買設定 -->
+                    <div class="strategy-config" id="config-mixed">
+                        <h4>🔄 先租後買設定</h4>
+                        <div class="phase-box">
+                            <h5>📅 租房階段</h5>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>月租金（萬）</label>
+                                    <input type="number" id="mixedRentMonthly" value="2" min="0" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label>年漲幅（%）</label>
+                                    <input type="number" id="mixedRentIncrease" value="2" min="0" max="10" step="0.5">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="phase-arrow">⬇</div>
+                        <div class="phase-box">
+                            <h5>🏡 買房階段</h5>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>購房年齡</label>
+                                    <input type="number" id="mixedBuyAge" value="40" min="25" max="70">
+                                </div>
+                                <div class="form-group">
+                                    <label>房屋總價（萬）</label>
+                                    <input type="number" id="mixedHousePrice" value="1200" min="0" step="50">
+                                </div>
+                                <div class="form-group">
+                                    <label>頭期款（%）</label>
+                                    <input type="number" id="mixedDownPayment" value="20" min="0" max="100" step="5">
+                                </div>
+                                <div class="form-group">
+                                    <label>貸款利率（%）</label>
+                                    <input type="number" id="mixedMortgageRate" value="2.0" min="0" max="10" step="0.1">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="calc-summary" id="mixedSummary">
+                            <div class="title">📊 計算摘要</div>
+                            <div class="item"><span>租金總支出</span><span class="value" id="mixedTotalRentDisplay">--</span></div>
+                            <div class="item"><span>月付房貸</span><span class="value" id="mixedMonthlyPayment">--</span></div>
+                        </div>
+                    </div>
+
+                    <!-- 比較模式 -->
+                    <div class="compare-mode">
+                        <h4>⚖️ 比較模式</h4>
+                        <div class="compare-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="compareModeToggle" onchange="toggleCompareMode()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <label>同時比較多種策略</label>
+                        </div>
+                        <div class="compare-options" id="compareOptions">
+                            <div class="compare-item">
+                                <input type="checkbox" id="compareNone" onchange="updateChart()">
+                                <label for="compareNone">🚫 不買房</label>
+                            </div>
+                            <div class="compare-item">
+                                <input type="checkbox" id="compareBuy" onchange="updateChart()">
+                                <label for="compareBuy">🏡 買房</label>
+                            </div>
+                            <div class="compare-item">
+                                <input type="checkbox" id="compareRent" onchange="updateChart()">
+                                <label for="compareRent">🏢 終身租房</label>
+                            </div>
+                            <div class="compare-item">
+                                <input type="checkbox" id="compareMixed" onchange="updateChart()">
+                                <label for="compareMixed">🔄 先租後買</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STEP 3: 退休規劃 =====
+                 設定退休年齡、預估壽命、每月開銷
+                 計算退休所需資金、4% 法則驗證
+            -->
+            <div class="step step-retire collapsed">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">3</div>
+                    <div class="step-title">退休規劃</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>退休年齡</label>
+                            <input type="number" id="retireAge" value="55" min="40" max="70">
+                        </div>
+                        <div class="form-group">
+                            <label>預估壽命</label>
+                            <input type="number" id="lifeExpectancy" value="85" min="60" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label>目前每月開銷（萬）</label>
+                            <input type="number" id="currentExpense" value="3" min="0.5" step="0.5">
+                        </div>
+                        <div class="form-group">
+                            <label>通膨率（%）</label>
+                            <input type="number" id="expenseInflation" value="2" min="0" max="10" step="0.5">
+                        </div>
+                    </div>
+
+                    <!-- 分隔線 -->
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0; padding-top: 15px;">
+                        <div style="font-size: 14px; color: var(--color-text-muted); margin-bottom: 10px; text-align: center;">📊 預測結果</div>
+                    </div>
+
+                    <!-- 退休時預估資產（主要顯示） -->
+                    <div style="background: rgba(0, 212, 255, 0.15); border: 1px solid var(--color-primary); border-radius: 10px; padding: 12px; margin-bottom: 10px; text-align: center;">
+                        <div style="font-size: 12px; color: var(--color-text-muted);">
+                            退休時預估資產（<span id="retireAgeDisplay2">55</span> 歲）
+                        </div>
+                        <div style="font-size: 28px; color: var(--color-primary); font-weight: bold;" id="projectedRetireAsset">--</div>
+                        <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px;">
+                            退休後需支撐 <span id="retirePeriodDisplay">--</span> 年（月開銷 <span id="retireExpenseDisplay">--</span>）
+                        </div>
+                    </div>
+
+                    <!-- 4% 法則 與 每月可花 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div style="background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 10px;">
+                            <div style="font-size: 12px; color: #2ecc71; font-weight: bold;">🛡️ 4% 法則</div>
+                            <div style="font-size: 16px; color: #2ecc71; font-weight: bold; margin: 4px 0;" id="safeRuleStatus">--</div>
+                            <div style="font-size: 12px; color: #2ecc71; opacity: 0.9;">
+                                目標 <span id="safeAssetDisplay">--</span>
+                            </div>
+                        </div>
+                        <div style="background: rgba(241, 196, 15, 0.15); border: 1px solid #f39c12; border-radius: 8px; padding: 10px;">
+                            <div style="font-size: 12px; color: #f39c12; font-weight: bold;">📐 花到 <span id="lifeDisplay">85</span> 歲</div>
+                            <div style="font-size: 16px; color: #f39c12; font-weight: bold; margin: 4px 0;">
+                                月花 <span id="exactMonthlyDisplay">--</span>
+                            </div>
+                            <div style="font-size: 12px; color: #f39c12; opacity: 0.9;">
+                                共 <span id="retirePeriodDisplay2">--</span> 年
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                            <input type="checkbox" id="enableRetirement" onchange="updateChart()" style="width: 16px; height: 16px;">
+                            啟用退休規劃
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STEP 4: 特殊現金流 =====
+                 新增一次性收入/支出事件
+                 例如：年終獎金、旅遊支出、子女教育費
+            -->
+            <div class="step step-events collapsed">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">4</div>
+                    <div class="step-title">特殊現金流</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <!-- 類型選擇 -->
+                    <div class="event-type-toggle">
+                        <button class="type-btn active" data-type="income" onclick="setEventType('income')">
+                            💰 額外投入
+                        </button>
+                        <button class="type-btn" data-type="expense" onclick="setEventType('expense')">
+                            💸 一次性支出
+                        </button>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>年齡</label>
+                            <input type="number" id="eventAge" value="31" min="25" max="80">
+                        </div>
+                        <div class="form-group">
+                            <label id="eventAmountLabel">金額（萬）</label>
+                            <input type="number" id="eventAmount" value="10" min="0">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>說明</label>
+                            <input type="text" id="eventDesc" value="年終獎金">
+                        </div>
+                    </div>
+                    <button class="tool-btn" onclick="addEvent()">➕ 新增事件</button>
+
+                    <!-- 快速按鈕：收入 -->
+                    <div class="quick-btns" id="incomeQuickBtns">
+                        <span class="quick-label">💰 收入：</span>
+                        <button class="quick-btn income" onclick="quickAddIncome(31, 10, '年終獎金')">年終獎金</button>
+                        <button class="quick-btn income" onclick="quickAddIncome(35, 50, '績效獎金')">績效獎金</button>
+                        <button class="quick-btn income" onclick="quickAddIncome(40, 100, '賣股獲利')">賣股獲利</button>
+                    </div>
+
+                    <!-- 快速按鈕：支出 -->
+                    <div class="quick-btns" id="expenseQuickBtns">
+                        <span class="quick-label">💸 支出：</span>
+                        <button class="quick-btn expense" onclick="quickAddExpense(35, 50, '結婚')">結婚</button>
+                        <button class="quick-btn expense" onclick="quickAddExpense(40, 100, '購車')">購車</button>
+                        <button class="quick-btn expense" onclick="quickAddExpense(36, 100, '小孩出生')">小孩</button>
+                    </div>
+
+                    <div class="event-list" id="eventList"></div>
+
+                    <!-- 同步現金流按鈕 -->
+                    <div class="cashflow-sync-section" id="cashflowSyncSection" style="display: none;">
+                        <div style="background: rgba(241, 196, 15, 0.1); border: 1px solid var(--color-warning); border-radius: 8px; padding: 10px; margin-top: 10px;">
+                            <div style="font-size: 12px; color: var(--color-warning); margin-bottom: 8px;">
+                                ⚠️ 現金流有變更，尚未同步到 Sheet
+                            </div>
+                            <button class="btn btn-primary" onclick="syncCashflowToSheet()" style="width: 100%; font-size: 13px;">
+                                🔄 同步現金流到 Sheet
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== STEP 5: 設定與工具 =====
+                 Google Sheet 連線設定（Sheet ID、Apps Script URL）
+                 同步按鈕、連線測試
+            -->
+            <div class="step step-tools collapsed">
+                <div class="step-header" onclick="toggleStep(this)">
+                    <div class="step-number">⚙️</div>
+                    <div class="step-title">設定與工具</div>
+                    <div class="step-toggle">▼</div>
+                </div>
+                <div class="step-content">
+                    <!-- 🔗 Sheet 連接設定 -->
+                    <div class="tool-section">
+                        <h4>🔗 Sheet 連接設定</h4>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Apps Script URL <span id="connectionStatus" style="font-size: 11px;"></span></label>
+                            <input type="text" id="appsScriptUrl" placeholder="貼上部署後的網址" style="font-size: 13px;">
+                        </div>
+                        <button class="btn btn-secondary" onclick="testConnection()" id="testConnBtn" style="width: 100%; margin-bottom: 8px;">
+                            🔍 測試連線
+                        </button>
+                        <button class="btn btn-secondary" onclick="copyShareUrl()" style="width: 100%; margin-bottom: 8px;">
+                            📱 複製手機連結
+                        </button>
+
+                        <details style="margin-top: 10px;">
+                            <summary style="cursor: pointer; font-size: 12px; color: var(--color-text-muted);">
+                                📥 從 Sheet 讀取設定（進階）
+                            </summary>
+                            <div style="margin-top: 8px;">
+                                <div class="form-group">
+                                    <label>Sheet 網址或 ID</label>
+                                    <input type="text" id="sheetId" placeholder="貼上完整網址或 ID" oninput="extractSheetId(this)" style="font-size: 13px;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                                    <button class="btn btn-secondary" onclick="copyTemplate()">📋 複製範本</button>
+                                    <button class="btn btn-primary" onclick="loadSheetData()" id="loadBtn">📥 讀取</button>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details style="margin-top: 10px; font-size: 11px;">
+                            <summary style="cursor: pointer; color: var(--color-text-muted);">
+                                📖 首次設定說明
+                            </summary>
+                            <div style="margin-top: 8px; line-height: 1.6; color: var(--color-text-muted); background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+                                <strong>設定 Apps Script（寫入用）：</strong><br>
+                                1. 開啟 Google Sheet → 擴充功能 → Apps Script<br>
+                                2. 貼上 SheetSync.gs 程式碼<br>
+                                3. 部署 → 新增部署 → 網頁應用程式<br>
+                                4. 存取權選「所有人」→ 部署<br>
+                                5. 複製網址貼到上方<br><br>
+                                <strong>讀取設定（可選）：</strong><br>
+                                若要從 Sheet 讀取，需設定為「任何人都可檢視」
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- 通膨計算 -->
+                    <div class="tool-section">
+                        <h4>📈 通膨計算機</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>現在金額（萬）</label>
+                                <input type="number" id="inflationAmount" value="100">
+                            </div>
+                            <div class="form-group">
+                                <label>年數</label>
+                                <input type="number" id="inflationYears" value="20">
+                            </div>
+                            <div class="form-group">
+                                <label>通膨率（%）</label>
+                                <input type="number" id="inflationRate" value="2" step="0.5">
+                            </div>
+                        </div>
+                        <button class="tool-btn" onclick="calculateInflation()">計算</button>
+                        <div class="tool-result" id="inflationResult"></div>
+                    </div>
+
+                    <!-- IRR 計算 -->
+                    <div class="tool-section">
+                        <h4>📊 IRR 計算機</h4>
+                        <button class="btn btn-secondary" onclick="autoFillIRR()" style="width: 100%; margin-bottom: 10px; font-size: 12px;">
+                            🔄 從歷史紀錄自動帶入
+                        </button>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>每月投入（萬）</label>
+                                <input type="number" id="irrMonthly" value="2.5">
+                            </div>
+                            <div class="form-group">
+                                <label>投資月數</label>
+                                <input type="number" id="irrMonths" value="68">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>目前資產（萬）</label>
+                                <input type="number" id="irrAsset" value="192">
+                            </div>
+                        </div>
+                        <button class="tool-btn" onclick="calculateIRR()">計算 IRR</button>
+                        <div class="tool-result" id="irrResult"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 右側面板 =====
+             包含兩個主要區塊：
+             1. chart-panel: 主圖表（歷史軌跡 + 預測線）
+             2. stats-panel: 整合里程碑 + 關鍵年齡預測
+        -->
+        <div class="right-panel">
+            <!-- 圖表：使用 Chart.js 繪製 -->
+            <div class="chart-panel">
+                <h2>📈 資產成長軌跡</h2>
+                <div class="chart-container">
+                    <canvas id="mainChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 整合統計區：里程碑 + 關鍵年齡 -->
+            <div class="stats-panel">
+                <h3>🏆 里程碑與預測</h3>
+                <div class="stats-grid" id="statsGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ================================================================
+         * JavaScript 區塊
+         * ================================================================
+         *
+         * 結構概覽：
+         *   1. CONFIG          - 配置常數（用戶、里程碑、預設值）
+         *   2. state           - 全域狀態（歷史資料、事件、圖表實例）
+         *   3. Utils           - 工具函數（日期解析、格式化、年齡計算）
+         *   4. Sheet 同步      - Google Sheet 讀寫（fetchSheet, syncToSheet）
+         *   5. 快速記錄        - quickRecordAndSync()
+         *   6. 歷史回顧        - updateHistorySummary(), renderHistoryList()
+         *   7. 投資模擬        - calculate() 主計算邏輯
+         *   8. 住房計算        - 買房/租房/比較的財務計算
+         *   9. 圖表繪製        - Chart.js 圖表更新
+         *   10. 初始化         - init() 頁面載入時執行
+         *
+         * 資料流：
+         *   [Sheet] ←→ fetchSheet/syncToSheet ←→ [state] → [UI]
+         *
+         * 重要提醒：
+         *   - Google Sheet 是唯一資料來源
+         *   - localStorage 只存連線設定（Sheet ID、URL）
+         *   - 快速記錄只存快照，不存每筆定期定額時間
+         * ================================================================ */
+
+        // ========== 1. 配置常數 ==========
+        const CONFIG = {
+            // 多用戶設定
+            USERS: {
+                'hey': {
+                    name: 'Hey',
+                    birthDate: new Date(1994, 9, 18),
+                    description: '1994/10/18'
+                },
+                'judy': {
+                    name: 'Judy',
+                    birthDate: new Date(1995, 6, 18),
+                    description: '1995/07/18'
+                }
+            },
+
+            // 預設用戶
+            DEFAULT_USER: 'hey',
+
+            // 里程碑目標（萬）
+            MILESTONES: [100, 200, 300, 500, 1000, 2000, 3000, 5000],
+
+            // 顯示的年齡節點
+            DISPLAY_AGES: [35, 40, 45, 50, 55, 60, 65],
+
+            // 預設值
+            DEFAULTS: {
+                CURRENT_VALUE: 192,
+                MONTHLY_CONTRIBUTION: 2.5,
+                ANNUAL_RATE: 10,
+                TARGET_AGE: 65,
+                HOUSE_PRICE: 1000,
+                DOWN_PAYMENT_PERCENT: 20,
+                MORTGAGE_RATE: 2.0,
+                MORTGAGE_YEARS: 30,
+                RENT_MONTHLY: 2,
+                RETIRE_AGE: 55,
+                LIFE_EXPECTANCY: 85
+            },
+
+            // 圖表顏色（對應 CSS 變數）
+            COLORS: {
+                primary: '#00d4ff',
+                success: '#2ecc71',
+                warning: '#f39c12',
+                danger: '#e74c3c',
+                purple: '#9b59b6',
+                muted: '#95a5a6'
+            },
+
+            // 策略配置
+            STRATEGIES: {
+                none: { name: '🚫 不買房', color: '#00d4ff' },
+                buy: { name: '🏡 買房', color: '#2ecc71' },
+                rent: { name: '🏢 終身租房', color: '#9b59b6' },
+                mixed: { name: '🔄 先租後買', color: '#f39c12' }
+            }
+        };
+
+        /* --------------------------------
+         * 2. 全域狀態
+         * --------------------------------
+         * historyData: 投資紀錄陣列 [{date, cost, asset, note}]
+         * events: 特殊現金流陣列 [{age, type, amount, desc}]
+         * chart: Chart.js 實例
+         * currentStrategy: 住房策略 (none/buy/rent/mixed)
+         * currentUser: 當前用戶 key
+         * -------------------------------- */
+        const state = {
+            historyData: [],
+            events: [],
+            chart: null,
+            currentStrategy: 'none',
+            historicalIRR: 0,
+            currentUser: CONFIG.DEFAULT_USER,
+            cashflowChanged: false,  // 追蹤現金流是否有變更
+            connectionVerified: false  // 追蹤連線是否已驗證
+        };
+
+        /* --------------------------------
+         * 3. 工具函數
+         * --------------------------------
+         * debounce()      - 防抖動
+         * formatMoney()   - 格式化金額
+         * getInputValue() - 取得輸入值
+         * parseDate()     - 日期解析（支援多種格式）
+         * getAge()        - 計算年齡
+         * -------------------------------- */
+        const Utils = {
+            // 通用的 debounce 函數
+            debounce(func, wait) {
+                let timeout;
+                return function(...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), wait);
+                };
+            },
+
+            // 格式化金額顯示
+            formatMoney(amount, decimals = 0) {
+                return amount.toFixed(decimals) + ' 萬';
+            },
+
+            // 從輸入框取得數值
+            getInputValue(id, defaultValue = 0) {
+                return parseFloat(document.getElementById(id)?.value) || defaultValue;
+            },
+
+            // 設定輸入框數值
+            setInputValue(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.value = value;
+            },
+
+            // 日期解析（統一入口）
+            parseDate(dateStr) {
+                if (!dateStr) return null;
+
+                // Google Sheet Date 格式
+                if (typeof dateStr === 'string' && dateStr.startsWith('Date(')) {
+                    const match = dateStr.match(/Date\((\d+),(\d+),(\d+)\)/);
+                    if (match) {
+                        return new Date(parseInt(match[1]), parseInt(match[2]), parseInt(match[3]));
+                    }
+                }
+
+                // 標準日期格式
+                const patterns = [
+                    /^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/,
+                    /^(\d{4})[-\/](\d{1,2})$/,
+                ];
+
+                for (const pattern of patterns) {
+                    const match = String(dateStr).match(pattern);
+                    if (match) {
+                        const year = parseInt(match[1]);
+                        const month = parseInt(match[2]) - 1;
+                        const day = match[3] ? parseInt(match[3]) : 1;
+                        return new Date(year, month, day);
+                    }
+                }
+
+                const date = new Date(dateStr);
+                return isNaN(date) ? null : date;
+            },
+
+            // 計算年齡（支援多用戶）
+            getAge(date = new Date()) {
+                const birthDate = CONFIG.USERS[state.currentUser]?.birthDate || CONFIG.USERS[CONFIG.DEFAULT_USER].birthDate;
+                let age = date.getFullYear() - birthDate.getFullYear();
+                const monthDiff = date.getMonth() - birthDate.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && date.getDate() < birthDate.getDate())) {
+                    age--;
+                }
+                return age;
+            },
+
+            // 取得當前用戶的出生日期
+            getBirthDate() {
+                return CONFIG.USERS[state.currentUser]?.birthDate || CONFIG.USERS[CONFIG.DEFAULT_USER].birthDate;
+            }
+        };
+
+        /* --------------------------------
+         * 財務計算工具
+         * --------------------------------
+         * mortgagePayment() - 房貸月付金（本息均攤）
+         * calculateIRR()    - IRR 計算（二分法）
+         * futureValue()     - 複利終值
+         * retirementAsset() - 退休所需資產（精算）
+         * totalRent()       - 租金總支出
+         * -------------------------------- */
+        const Calculator = {
+            // 房貸月付金計算
+            mortgagePayment(principal, annualRate, years) {
+                if (annualRate === 0) return principal / (years * 12);
+                const monthlyRate = annualRate / 12;
+                const n = years * 12;
+                return principal * monthlyRate * Math.pow(1 + monthlyRate, n) / (Math.pow(1 + monthlyRate, n) - 1);
+            },
+
+            // IRR 計算（二分法）
+            calculateIRR(monthlyInvest, months, finalAsset) {
+                let low = 0, high = 0.1, mid;
+
+                for (let i = 0; i < 100; i++) {
+                    mid = (low + high) / 2;
+                    const fv = mid === 0
+                        ? monthlyInvest * months
+                        : monthlyInvest * (Math.pow(1 + mid, months) - 1) / mid;
+
+                    if (Math.abs(fv - finalAsset) < 0.01) break;
+                    if (fv < finalAsset) low = mid;
+                    else high = mid;
+                }
+
+                return (Math.pow(1 + mid, 12) - 1) * 100; // 年化
+            },
+
+            // 複利計算
+            futureValue(present, rate, years) {
+                return present * Math.pow(1 + rate, years);
+            },
+
+            // 退休所需資產（精算方案）
+            retirementAsset(monthlyExpense, years, investRate, inflation) {
+                let total = 0;
+                for (let i = 0; i < years; i++) {
+                    const yearExpense = monthlyExpense * 12 * Math.pow(1 + inflation, i);
+                    total += yearExpense / Math.pow(1 + investRate, i);
+                }
+                return total;
+            },
+
+            // 租金總支出
+            totalRent(monthlyRent, years, annualIncrease) {
+                let total = 0;
+                for (let i = 0; i < years; i++) {
+                    total += monthlyRent * Math.pow(1 + annualIncrease, i) * 12;
+                }
+                return total;
+            }
+        };
+
+        /* --------------------------------
+         * 9. 初始化
+         * --------------------------------
+         * 頁面載入時執行：
+         *   1. initUserSelector() - 初始化用戶選擇器
+         *   2. initQuickRecord() - 初始化快速記錄日期
+         *   3. initChart() - 初始化 Chart.js
+         *   4. loadSavedData() - 載入連線設定（localStorage）
+         *   5. autoLoadFromSheet() - 自動從 Sheet 載入資料
+         *
+         * 資料來源：
+         *   - Google Sheet 是唯一資料來源
+         *   - localStorage 只存連線設定
+         *   - URL 參數可覆蓋設定（方便跨裝置使用）
+         *     例如：?sheet=SHEET_ID&user=me
+         * -------------------------------- */
+        window.onload = async function() {
+            initUserSelector();
+            initQuickRecord();
+            updateCurrentAge();
+            initChart();
+            setupAutoUpdate();
+            loadSavedData();
+
+            // 處理 URL 參數（覆蓋 localStorage 設定）
+            applyUrlParams();
+
+            selectStrategy('none');
+            updateAllCalculations();
+
+            // 自動從 Sheet 同步資料（如果已設定）
+            await autoLoadFromSheet();
+        };
+
+        // 解析 URL 參數並套用設定
+        // 支援參數：
+        //   - sheet: Google Sheet ID
+        //   - user: 用戶 ID (me/judy/或自訂)
+        function applyUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+
+            // Sheet ID
+            const sheetParam = params.get('sheet');
+            if (sheetParam) {
+                Utils.setInputValue('sheetId', sheetParam);
+                localStorage.setItem('investmentSheetId', sheetParam);
+            }
+
+            // 用戶選擇
+            const userParam = params.get('user');
+            if (userParam && CONFIG.USERS[userParam]) {
+                state.currentUser = userParam;
+                localStorage.setItem('currentUser', userParam);
+                renderUserSelector();
+            }
+        }
+
+        // 產生可分享的 URL（含目前設定）
+        function generateShareUrl() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+            if (!sheetId) {
+                showStatus('請先設定 Sheet ID', 'error');
+                return null;
+            }
+
+            const baseUrl = window.location.origin + window.location.pathname;
+            const params = new URLSearchParams();
+            params.set('sheet', sheetId);
+            params.set('user', state.currentUser);
+
+            return baseUrl + '?' + params.toString();
+        }
+
+        // 複製分享連結到剪貼簿
+        async function copyShareUrl() {
+            const url = generateShareUrl();
+            if (!url) return;
+
+            try {
+                await navigator.clipboard.writeText(url);
+                showStatus('✅ 已複製連結！在手機瀏覽器貼上即可', 'success');
+            } catch (err) {
+                // 降級方案：顯示連結讓用戶手動複製
+                prompt('複製此連結到手機：', url);
+            }
+        }
+
+        // 自動從 Sheet 載入資料（靜默模式，不顯示錯誤）
+        // 從 Sheet 載入所有資料（Sheet 為唯一資料來源）
+        async function autoLoadFromSheet() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+            if (!sheetId) {
+                showStatus('⚠️ 請設定 Sheet ID 以載入資料', 'warning');
+                return;
+            }
+
+            const userSheetName = getUserSheetName();
+            showStatus(`正在從 Sheet 載入「${userSheetName}」的資料...`, 'loading');
+
+            try {
+                const response = await fetchSheet(sheetId, userSheetName);
+
+                if (!response.table?.rows?.length) {
+                    showStatus(`「${userSheetName}」分頁尚無資料`, 'warning');
+                    return;
+                }
+
+                // 完全從 Sheet 載入（不合併本地資料）
+                parseUserSheet(response.table);
+
+                const summary = [];
+                if (state.historyData.length > 0) summary.push(`${state.historyData.length} 筆紀錄`);
+                if (state.events.length > 0) summary.push(`${state.events.length} 筆現金流`);
+
+                if (summary.length > 0) {
+                    showStatus(`✅ 已從 Sheet 載入：${summary.join('、')}`, 'success');
+                    onHistoryDataLoaded();
+                } else {
+                    showStatus('✅ 已載入設定', 'success');
+                }
+
+            } catch (error) {
+                console.error('Load from Sheet failed:', error.message);
+                showStatus('❌ 無法從 Sheet 載入：' + error.message, 'error');
+            }
+        }
+
+        // 已移除合併邏輯（不再需要，因為 Sheet 是唯一資料來源）
+        // mergeHistoryData 和 mergeEventsData 函數已刪除
+
+        // 保留空函數以防舊程式碼呼叫
+        function mergeHistoryData(local, sheet) {
+            return sheet; // 直接返回 Sheet 資料
+        }
+
+        // 初始化用戶選擇器
+        function initUserSelector() {
+            // 載入自訂用戶（從 localStorage）
+            loadCustomUsers();
+
+            const container = document.getElementById('userSelector');
+            const savedUser = localStorage.getItem('currentUser') || CONFIG.DEFAULT_USER;
+
+            // 確保用戶存在，否則回到預設
+            if (!CONFIG.USERS[savedUser]) {
+                state.currentUser = CONFIG.DEFAULT_USER;
+            } else {
+                state.currentUser = savedUser;
+            }
+
+            renderUserSelector();
+        }
+
+        // 渲染用戶選擇器
+        function renderUserSelector() {
+            const container = document.getElementById('userSelector');
+
+            const usersHtml = Object.entries(CONFIG.USERS).map(([id, user]) => `
+                <div class="user-option ${id === state.currentUser ? 'selected' : ''}" data-user="${id}" onclick="selectUser('${id}')">
+                    <div class="user-name">${user.name}</div>
+                    <div class="user-info">${user.description}</div>
+                    ${user.custom ? `<span class="user-delete" onclick="event.stopPropagation(); deleteUser('${id}')" title="刪除">×</span>` : ''}
+                </div>
+            `).join('');
+
+            const addBtnHtml = `
+                <div class="user-option user-add" onclick="showAddUserDialog()">
+                    <div class="user-name">+ 新增</div>
+                </div>
+            `;
+
+            container.innerHTML = usersHtml + addBtnHtml;
+        }
+
+        // 載入自訂用戶
+        function loadCustomUsers() {
+            const saved = localStorage.getItem('customUsers');
+            if (saved) {
+                try {
+                    const customUsers = JSON.parse(saved);
+                    Object.entries(customUsers).forEach(([id, user]) => {
+                        CONFIG.USERS[id] = {
+                            ...user,
+                            birthDate: new Date(user.birthDate),
+                            custom: true
+                        };
+                    });
+                } catch (e) {
+                    console.warn('載入自訂用戶失敗:', e);
+                }
+            }
+        }
+
+        // 儲存自訂用戶
+        function saveCustomUsers() {
+            const customUsers = {};
+            Object.entries(CONFIG.USERS).forEach(([id, user]) => {
+                if (user.custom) {
+                    customUsers[id] = {
+                        name: user.name,
+                        birthDate: user.birthDate.toISOString(),
+                        description: user.description,
+                        custom: true
+                    };
+                }
+            });
+            localStorage.setItem('customUsers', JSON.stringify(customUsers));
+        }
+
+        // 顯示新增用戶對話框
+        function showAddUserDialog() {
+            const name = prompt('請輸入用戶名稱：');
+            if (!name || !name.trim()) return;
+
+            const birthStr = prompt('請輸入生日（格式：YYYY-MM-DD）：', '1990-01-01');
+            if (!birthStr) return;
+
+            const birthDate = new Date(birthStr);
+            if (isNaN(birthDate.getTime())) {
+                showStatus('日期格式錯誤', 'error');
+                return;
+            }
+
+            // 生成 ID
+            const id = name.trim().toLowerCase().replace(/\s+/g, '_') + '_' + Date.now().toString(36);
+
+            // 新增到 CONFIG
+            CONFIG.USERS[id] = {
+                name: name.trim(),
+                birthDate: birthDate,
+                description: birthStr,
+                custom: true
+            };
+
+            // 儲存並更新 UI
+            saveCustomUsers();
+            renderUserSelector();
+            selectUser(id);
+            showStatus(`已新增用戶「${name.trim()}」`, 'success');
+        }
+
+        // 刪除用戶
+        function deleteUser(userId) {
+            const user = CONFIG.USERS[userId];
+            if (!user || !user.custom) return;
+
+            if (!confirm(`確定要刪除用戶「${user.name}」嗎？\n該用戶的所有資料將被清除。`)) return;
+
+            // 刪除該用戶的 localStorage 資料
+            localStorage.removeItem(`investmentData_${userId}`);
+
+            // 從 CONFIG 移除
+            delete CONFIG.USERS[userId];
+
+            // 儲存
+            saveCustomUsers();
+
+            // 如果刪除的是當前用戶，切換回預設
+            if (state.currentUser === userId) {
+                state.currentUser = CONFIG.DEFAULT_USER;
+                localStorage.setItem('currentUser', CONFIG.DEFAULT_USER);
+                loadSavedData();
+            }
+
+            renderUserSelector();
+            showStatus(`已刪除用戶「${user.name}」`, 'success');
+        }
+
+        // 選擇用戶
+        async function selectUser(userId) {
+            if (userId === state.currentUser) return;  // 相同用戶，不處理
+
+            // 1. 先儲存當前用戶的資料
+            saveAllData();
+
+            // 2. 切換用戶
+            const previousUser = state.currentUser;
+            state.currentUser = userId;
+            localStorage.setItem('currentUser', userId);
+
+            // 3. 重置 state（避免資料混淆）
+            state.historyData = [];
+            state.events = [];
+            state.currentStrategy = 'none';
+            state.historicalIRR = 0;
+            state.cashflowChanged = false;
+
+            // 4. 載入連線設定
+            loadSavedData();
+
+            // 5. 更新 UI
+            document.querySelectorAll('.user-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.user === userId);
+            });
+
+            // 6. 隱藏歷史摘要（等待載入後顯示）
+            document.getElementById('historySummary').classList.remove('active');
+            document.getElementById('cashflowSyncSection').style.display = 'none';
+
+            // 7. 重新整理事件列表
+            refreshEventList();
+
+            // 8. 更新 Header（生日、年齡）
+            updateCurrentAge();
+
+            // 9. 重置 Header 資產顯示（等待 Sheet 載入後更新）
+            updateHeaderAsset(null);
+
+            selectStrategy(state.currentStrategy);
+            updateAllCalculations();
+
+            showStatus(`正在載入 ${CONFIG.USERS[userId].name} 的資料...`, 'success');
+
+            // 10. 從 Sheet 重新載入新用戶的資料
+            await autoLoadFromSheet();
+        }
+
+        // 初始化快速記錄
+        function initQuickRecord() {
+            // 設定今天日期
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('quickRecordDate').value = today;
+
+            // 輸入時計算報酬
+            ['quickRecordCost', 'quickRecordAsset'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateQuickRecordResult);
+            });
+        }
+
+        // 更新快速記錄的結果顯示
+        function updateQuickRecordResult() {
+            const cost = parseFloat(document.getElementById('quickRecordCost').value) || 0;
+            const asset = parseFloat(document.getElementById('quickRecordAsset').value) || 0;
+            const resultEl = document.getElementById('quickRecordResult');
+
+            if (cost > 0 && asset > 0) {
+                const profit = asset - cost;
+                const returnRate = ((profit / cost) * 100).toFixed(1);
+                const profitClass = profit >= 0 ? 'positive' : 'negative';
+                const sign = profit >= 0 ? '+' : '';
+
+                resultEl.innerHTML = `
+                    報酬：<span class="profit ${profitClass}">${sign}${profit.toFixed(1)} 萬 (${sign}${returnRate}%)</span>
+                `;
+                resultEl.classList.add('active');
+            } else {
+                resultEl.classList.remove('active');
+            }
+        }
+
+        function updateCurrentAge() {
+            const age = Utils.getAge();
+            const birthDate = Utils.getBirthDate();
+            const birthStr = `${birthDate.getFullYear()}/${birthDate.getMonth() + 1}/${birthDate.getDate()}`;
+
+            // 更新 Header 顯示
+            document.getElementById('headerBirthDate').textContent = birthStr;
+            document.getElementById('headerAge').textContent = age;
+            return age;
+        }
+
+        // 更新 Header 資產顯示
+        function updateHeaderAsset(asset) {
+            document.getElementById('headerAsset').textContent = asset ? asset.toFixed(0) : '--';
+        }
+
+        function getCurrentAge() {
+            return Utils.getAge();
+        }
+
+        // ========== 自動更新設定 ==========
+        function setupAutoUpdate() {
+            const debouncedUpdate = Utils.debounce(updateAllCalculations, 300);
+            const debouncedSave = Utils.debounce(saveAllData, 1000);  // 1 秒後自動儲存
+
+            document.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', () => {
+                    debouncedUpdate();
+                    debouncedSave();
+                });
+                input.addEventListener('input', () => {
+                    debouncedUpdate();
+                    debouncedSave();
+                });
+            });
+
+            // 報酬率滑桿即時顯示
+            document.getElementById('annualRate').addEventListener('input', function() {
+                document.getElementById('rateDisplay').textContent = this.value + '%';
+            });
+        }
+
+        function updateAllCalculations() {
+            updateBuyCalculations();
+            updateRentCalculations();
+            updateMixedCalculations();
+            updateRetireCalculations();
+            updateChart();
+        }
+
+        // ========== 步驟展開/收合 ==========
+        function toggleStep(header) {
+            const step = header.parentElement;
+            step.classList.toggle('collapsed');
+        }
+
+        /* --------------------------------
+         * 8. 住房策略計算
+         * --------------------------------
+         * 四種策略：
+         *   none  - 不買房（純投資）
+         *   buy   - 買房（房貸計算）
+         *   rent  - 終身租房（租金累計）
+         *   mixed - 先租後買（兩階段）
+         *
+         * 主要計算：
+         *   - 房貸月供（本息均攤）
+         *   - 租金累計（含漲幅）
+         *   - 機會成本（投資報酬 vs 房貸利息）
+         *   - 買房甜蜜點（等效投資本金）
+         * -------------------------------- */
+        function selectStrategy(strategy) {
+            state.currentStrategy = strategy;
+
+            // 更新選中狀態
+            document.querySelectorAll('.strategy-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.strategy === strategy);
+            });
+
+            // 顯示對應設定
+            document.querySelectorAll('.strategy-config').forEach(config => {
+                config.classList.remove('active');
+            });
+
+            if (strategy !== 'none') {
+                document.getElementById(`config-${strategy}`)?.classList.add('active');
+            }
+
+            updateAllCalculations();
+        }
+
+        // ========== 比較模式 ==========
+        function toggleCompareMode() {
+            const enabled = document.getElementById('compareModeToggle').checked;
+            document.getElementById('compareOptions').classList.toggle('active', enabled);
+            updateChart();
+        }
+
+        // ========== 買房計算 ==========
+        function updateBuyCalculations() {
+            const buyAge = Utils.getInputValue('buyAge', 38);
+            const housePrice = Utils.getInputValue('housePrice');
+            const downPaymentPercent = Utils.getInputValue('downPaymentPercent') / 100;
+            const mortgageRate = Utils.getInputValue('mortgageRate') / 100;
+            const mortgageYears = Utils.getInputValue('mortgageYears', 30);
+
+            const downPayment = housePrice * downPaymentPercent;
+            const loanAmount = housePrice - downPayment;
+            const monthlyPayment = Calculator.mortgagePayment(loanAmount, mortgageRate, mortgageYears);
+
+            document.getElementById('buyAgeDisplay').textContent = buyAge + ' 歲';
+            document.getElementById('downPaymentHint').textContent = `= ${downPayment.toFixed(0)} 萬`;
+            document.getElementById('monthlyPaymentDisplay').textContent = monthlyPayment.toFixed(2) + ' 萬/月';
+            document.getElementById('loanAmountDisplay').textContent = loanAmount.toFixed(0) + ' 萬';
+
+            // 甜蜜點：年度房貸支出 / 投資報酬率 = 等效投資本金
+            const annualRate = Utils.getInputValue('annualRate') / 100;
+            const sweetSpot = annualRate > 0 ? (monthlyPayment * 12 / annualRate) : 0;
+            document.getElementById('sweetSpotDisplay').textContent = sweetSpot.toFixed(0) + ' 萬';
+        }
+
+        // ========== 租房計算 ==========
+        function updateRentCalculations() {
+            const rentMonthly = Utils.getInputValue('rentMonthly');
+            const rentIncrease = Utils.getInputValue('rentIncrease') / 100;
+            const currentAge = getCurrentAge();
+            const targetAge = Utils.getInputValue('targetAge', 65);
+            const years = targetAge - currentAge;
+
+            const futureRent = Calculator.futureValue(rentMonthly, rentIncrease, years);
+            const totalRent = Calculator.totalRent(rentMonthly, years, rentIncrease);
+
+            document.getElementById('currentRentDisplay').textContent = rentMonthly.toFixed(1) + ' 萬/月';
+            document.getElementById('futureRentDisplay').textContent = futureRent.toFixed(1) + ' 萬/月';
+            document.getElementById('totalRentDisplay').textContent = totalRent.toFixed(0) + ' 萬';
+        }
+
+        // ========== 先租後買計算 ==========
+        function updateMixedCalculations() {
+            const rentMonthly = Utils.getInputValue('mixedRentMonthly');
+            const rentIncrease = Utils.getInputValue('mixedRentIncrease') / 100;
+            const buyAge = Utils.getInputValue('mixedBuyAge', 40);
+            const currentAge = getCurrentAge();
+            const rentYears = Math.max(0, buyAge - currentAge);
+
+            const housePrice = Utils.getInputValue('mixedHousePrice');
+            const downPaymentPercent = Utils.getInputValue('mixedDownPayment') / 100;
+            const mortgageRate = Utils.getInputValue('mixedMortgageRate') / 100;
+
+            const totalRent = Calculator.totalRent(rentMonthly, rentYears, rentIncrease);
+            const loanAmount = housePrice * (1 - downPaymentPercent);
+            const monthlyPayment = Calculator.mortgagePayment(loanAmount, mortgageRate, 30);
+
+            document.getElementById('mixedTotalRentDisplay').textContent = totalRent.toFixed(0) + ' 萬';
+            document.getElementById('mixedMonthlyPayment').textContent = monthlyPayment.toFixed(2) + ' 萬/月';
+        }
+
+        // ========== 退休計算 ==========
+        /* --------------------------------
+         * 9. 退休規劃計算
+         * --------------------------------
+         * 新版設計（v3.2）：
+         *   - 主顯示：退休時的預估資產
+         *   - 4% 法則：顯示「達標年齡」或「還差多少」
+         *   - 精算花完：退休後每月可花多少
+         *
+         * 計算邏輯：
+         *   1. 用 calculateAssets() 取得逐年資產預測
+         *   2. 計算退休時資產 = projectedValues[retireAge]
+         *   3. 4% 法則目標 = 月開銷 × 12 / 0.04
+         *   4. 找出哪一年達標（遍歷 projectedValues）
+         *   5. 精算花完 = 退休資產 / (退休年數 × 12)（簡化）
+         * -------------------------------- */
+        function updateRetireCalculations() {
+            const retireAge = Utils.getInputValue('retireAge', 55);
+            const lifeExpectancy = Utils.getInputValue('lifeExpectancy', 85);
+            const currentExpense = Utils.getInputValue('currentExpense', 3);
+            const inflation = Utils.getInputValue('expenseInflation') / 100;
+            const annualRate = Utils.getInputValue('annualRate') / 100;
+            const currentAge = getCurrentAge();
+
+            const yearsToRetire = retireAge - currentAge;
+            const retireYears = lifeExpectancy - retireAge;
+
+            // 計算退休時的月開銷（考慮通膨）
+            const retireExpense = Calculator.futureValue(currentExpense, inflation, yearsToRetire);
+
+            // 更新頂部顯示的年齡和退休年數
+            document.getElementById('retireAgeDisplay2').textContent = retireAge;
+            document.getElementById('lifeDisplay').textContent = lifeExpectancy;
+            document.getElementById('retirePeriodDisplay').textContent = retireYears;
+            document.getElementById('retirePeriodDisplay2').textContent = retireYears;
+            document.getElementById('retireExpenseDisplay').textContent = retireExpense.toFixed(1) + ' 萬/月';
+
+            // 4% 法則目標：年支出 / 4% = 所需本金
+            const safeAsset = retireExpense * 12 / 0.04;
+            document.getElementById('safeAssetDisplay').textContent = safeAsset.toFixed(0) + ' 萬';
+
+            // 用 calculateAssets 取得資產預測
+            const targetAge = Utils.getInputValue('targetAge', 65);
+            const yearsToProject = Math.max(targetAge, lifeExpectancy) - currentAge;
+            const projectedValues = calculateAssets(state.currentStrategy, yearsToProject);
+
+            // 找出退休時的資產
+            const retireYearData = projectedValues.find(v => v.age === retireAge);
+            const projectedRetireAsset = retireYearData ? retireYearData.asset : 0;
+            document.getElementById('projectedRetireAsset').textContent = projectedRetireAsset.toFixed(0) + ' 萬';
+
+            // 找出 4% 法則達標年齡
+            let safeRuleAchievedAge = null;
+            for (const v of projectedValues) {
+                if (v.asset >= safeAsset) {
+                    safeRuleAchievedAge = v.age;
+                    break;
+                }
+            }
+
+            // 顯示 4% 法則狀態
+            if (safeRuleAchievedAge !== null) {
+                if (safeRuleAchievedAge <= retireAge) {
+                    document.getElementById('safeRuleStatus').textContent = `✅ ${safeRuleAchievedAge}歲達標`;
+                } else {
+                    document.getElementById('safeRuleStatus').textContent = `⏳ ${safeRuleAchievedAge}歲達標`;
+                }
+            } else {
+                // 計算還差多少
+                const shortfall = safeAsset - projectedRetireAsset;
+                document.getElementById('safeRuleStatus').textContent = `🎯 還差 ${shortfall.toFixed(0)} 萬`;
+            }
+
+            // 精算花完：退休資產 / 退休年數 / 12 = 每月可花
+            // 簡化計算（不考慮退休後的投資報酬）
+            const exactMonthly = retireYears > 0 ? projectedRetireAsset / retireYears / 12 : 0;
+            document.getElementById('exactMonthlyDisplay').textContent = exactMonthly.toFixed(1) + ' 萬';
+        }
+
+        // ========== 資產計算 ==========
+        function calculateAssets(strategy, years) {
+            const currentValue = Utils.getInputValue('currentValue');
+            const monthlyContribution = Utils.getInputValue('monthlyContribution');
+            const annualRate = Utils.getInputValue('annualRate') / 100;
+            const currentAge = getCurrentAge();
+
+            // 預先取得策略配置，避免重複讀取 DOM
+            const strategyConfig = getStrategyConfig(strategy);
+
+            const values = [];
+            let asset = currentValue;
+
+            for (let year = 0; year <= years; year++) {
+                const age = currentAge + year;
+
+                if (year > 0) {
+                    // 年度複利增長 + 年度投入
+                    asset = asset * (1 + annualRate) + monthlyContribution * 12;
+
+                    // 策略相關支出
+                    asset -= calculateStrategyExpense(strategyConfig, age, year);
+
+                    // 特殊現金流（收入加入、支出扣除）
+                    state.events
+                        .filter(e => e.age === age)
+                        .forEach(e => {
+                            if (e.type === 'income') {
+                                asset += e.amount;  // 額外投入
+                            } else {
+                                asset -= e.amount;  // 一次性支出
+                            }
+                        });
+                }
+
+                values.push({ age, asset: Math.max(0, asset) });
+            }
+
+            return values;
+        }
+
+        // 取得策略配置（減少 DOM 讀取次數）
+        function getStrategyConfig(strategy) {
+            const config = { strategy };
+
+            if (strategy === 'buy') {
+                config.buyAge = Utils.getInputValue('buyAge', 38);
+                config.housePrice = Utils.getInputValue('housePrice');
+                config.downPaymentPercent = Utils.getInputValue('downPaymentPercent') / 100;
+                config.mortgageRate = Utils.getInputValue('mortgageRate') / 100;
+                config.mortgageYears = Utils.getInputValue('mortgageYears', 30);
+                config.loanAmount = config.housePrice * (1 - config.downPaymentPercent);
+                config.monthlyMortgage = Calculator.mortgagePayment(config.loanAmount, config.mortgageRate, config.mortgageYears);
+            } else if (strategy === 'rent') {
+                config.rentMonthly = Utils.getInputValue('rentMonthly');
+                config.rentIncrease = Utils.getInputValue('rentIncrease') / 100;
+            } else if (strategy === 'mixed') {
+                config.buyAge = Utils.getInputValue('mixedBuyAge', 40);
+                config.rentMonthly = Utils.getInputValue('mixedRentMonthly');
+                config.rentIncrease = Utils.getInputValue('mixedRentIncrease') / 100;
+                config.housePrice = Utils.getInputValue('mixedHousePrice');
+                config.downPaymentPercent = Utils.getInputValue('mixedDownPayment') / 100;
+                config.mortgageRate = Utils.getInputValue('mixedMortgageRate') / 100;
+                config.loanAmount = config.housePrice * (1 - config.downPaymentPercent);
+                config.monthlyMortgage = Calculator.mortgagePayment(config.loanAmount, config.mortgageRate, 30);
+            }
+
+            return config;
+        }
+
+        // 計算策略支出（使用預先取得的配置）
+        function calculateStrategyExpense(config, age, year) {
+            const { strategy } = config;
+
+            if (strategy === 'buy') {
+                if (age === config.buyAge) return config.housePrice * config.downPaymentPercent;
+                if (age > config.buyAge && age <= config.buyAge + config.mortgageYears) {
+                    return config.monthlyMortgage * 12;
+                }
+            } else if (strategy === 'rent') {
+                return config.rentMonthly * Math.pow(1 + config.rentIncrease, year) * 12;
+            } else if (strategy === 'mixed') {
+                // 先租後買：買房年需要付半年租金 + 頭期款
+                if (age < config.buyAge) {
+                    // 買房前：只付租金
+                    return config.rentMonthly * Math.pow(1 + config.rentIncrease, year) * 12;
+                }
+                if (age === config.buyAge) {
+                    // 買房年：半年租金 + 頭期款（假設年中買房）
+                    const halfYearRent = config.rentMonthly * Math.pow(1 + config.rentIncrease, year) * 6;
+                    const downPayment = config.housePrice * config.downPaymentPercent;
+                    return halfYearRent + downPayment;
+                }
+                // 買房後：付房貸
+                if (age <= config.buyAge + 30) {  // 假設 30 年貸款
+                    return config.monthlyMortgage * 12;
+                }
+            }
+
+            return 0;
+        }
+
+        /* --------------------------------
+         * 7. 圖表繪製功能
+         * --------------------------------
+         * 使用 Chart.js 繪製資產成長圖
+         *
+         * 資料集：
+         *   - 歷史成本線（灰色虛線）
+         *   - 歷史資產線（紫色）
+         *   - 預測資產線（依策略顏色）
+         *
+         * 主要函數：
+         *   initChart() - 初始化圖表
+         *   updateChart() - 更新圖表資料
+         *   addHistoryDatasets() - 添加歷史資料
+         *   addCompareDatasets() - 比較模式
+         * -------------------------------- */
+        function initChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            state.chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#eee', font: { size: 14 } }
+                        },
+                        tooltip: {
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 14 },
+                            callbacks: {
+                                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} 萬`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: '年齡', color: '#aaa', font: { size: 14 } },
+                            ticks: { color: '#aaa', font: { size: 13 } },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: {
+                            title: { display: true, text: '金額（萬元）', color: '#aaa', font: { size: 14 } },
+                            ticks: { color: '#aaa', font: { size: 13 } },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart() {
+            const currentAge = getCurrentAge();
+            const targetAge = Utils.getInputValue('targetAge', 65);
+
+            // 計算起始年齡：如果有歷史資料，從第一筆記錄開始；否則從目前年齡開始
+            let startAge = currentAge;
+            if (state.historyData.length > 0) {
+                const firstRecordAge = Utils.getAge(state.historyData[0].date);
+                startAge = Math.min(firstRecordAge, currentAge);
+            }
+
+            const totalYears = targetAge - startAge;
+            const labels = Array.from({ length: totalYears + 1 }, (_, i) => `${startAge + i}歲`);
+            const datasets = [];
+
+            // 歷史資料線（從 startAge 開始）
+            addHistoryDatasets(datasets, startAge, totalYears);
+
+            // 比較模式或單一策略（預測線從 currentAge 開始，但索引對齊 startAge）
+            const compareMode = document.getElementById('compareModeToggle').checked;
+            let cachedValues = null;
+            const currentAgeOffset = currentAge - startAge;
+
+            if (compareMode) {
+                addCompareDatasets(datasets, targetAge - currentAge, currentAgeOffset);
+            } else {
+                // 單一策略模式會回傳計算結果，避免 updateStats 重複計算
+                cachedValues = addSingleStrategyDataset(datasets, targetAge - currentAge, currentAgeOffset);
+            }
+
+            state.chart.data.labels = labels;
+            state.chart.data.datasets = datasets;
+            state.chart.update();
+
+            // 傳入已計算的 values，避免重複計算
+            updateStats(targetAge - currentAge, cachedValues);
+        }
+
+        // 添加歷史資料到圖表
+        // startAge: 圖表起始年齡, totalYears: 圖表總年數
+        function addHistoryDatasets(datasets, startAge, totalYears) {
+            if (state.historyData.length === 0) return;
+
+            const historyCostData = new Array(totalYears + 1).fill(null);
+            const historyAssetData = new Array(totalYears + 1).fill(null);
+
+            state.historyData.forEach(d => {
+                const idx = Utils.getAge(d.date) - startAge;
+                if (idx >= 0 && idx <= totalYears) {
+                    historyCostData[idx] = d.cost;
+                    historyAssetData[idx] = d.asset;
+                }
+            });
+
+            if (historyCostData.some(v => v !== null)) {
+                datasets.push({
+                    label: '📉 歷史成本',
+                    data: historyCostData,
+                    borderColor: CONFIG.COLORS.muted,
+                    backgroundColor: CONFIG.COLORS.muted + '1a',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    fill: true,
+                    spanGaps: true  // 跨越 null 值連接資料點
+                });
+            }
+
+            if (historyAssetData.some(v => v !== null)) {
+                datasets.push({
+                    label: '📈 歷史資產',
+                    data: historyAssetData,
+                    borderColor: CONFIG.COLORS.purple,
+                    backgroundColor: CONFIG.COLORS.purple + '1a',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    fill: true,
+                    spanGaps: true  // 跨越 null 值連接資料點
+                });
+            }
+        }
+
+        // 比較模式：添加多策略資料集
+        // years: 預測年數（從目前年齡到目標年齡）
+        // offset: 預測線在圖表中的起始索引（目前年齡 - 起始年齡）
+        function addCompareDatasets(datasets, years, offset = 0) {
+            const strategies = ['none', 'buy', 'rent', 'mixed'];
+            const checkboxIds = ['compareNone', 'compareBuy', 'compareRent', 'compareMixed'];
+
+            strategies.forEach((strategy, i) => {
+                if (document.getElementById(checkboxIds[i])?.checked) {
+                    const values = calculateAssets(strategy, years);
+                    const { name, color } = CONFIG.STRATEGIES[strategy];
+                    // 在預測線前面填充 null，對齊歷史資料
+                    const paddedData = new Array(offset).fill(null).concat(values.map(v => v.asset));
+                    datasets.push({
+                        label: name,
+                        data: paddedData,
+                        borderColor: color,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        fill: false
+                    });
+                }
+            });
+        }
+
+        // 單一策略模式（回傳計算結果供後續使用）
+        // years: 預測年數, offset: 預測線起始索引
+        function addSingleStrategyDataset(datasets, years, offset = 0) {
+            const values = calculateAssets(state.currentStrategy, years);
+            const { name, color } = CONFIG.STRATEGIES[state.currentStrategy];
+
+            // 在預測線前面填充 null，對齊歷史資料
+            const paddedData = new Array(offset).fill(null).concat(values.map(v => v.asset));
+            datasets.push({
+                label: name + ' 預測',
+                data: paddedData,
+                borderColor: color,
+                backgroundColor: color + '20',
+                borderWidth: 3,
+                pointRadius: 2,
+                fill: true
+            });
+
+            return values; // 回傳供 updateStats 使用
+        }
+
+        /* --------------------------------
+         * 10. 統計面板更新（整合里程碑與年齡預測）
+         * --------------------------------
+         * 顯示內容：
+         *   1. 里程碑（100萬、200萬...）- 已達成或預測達成年齡
+         *   2. 關鍵年齡（35、40、45...）- 預測資產
+         *
+         * 樣式類別：
+         *   .milestone-achieved - 已達成里程碑（綠色）
+         *   .milestone-pending  - 未達成里程碑（灰色）
+         *   .age-item          - 年齡預測（青色）
+         *   .highlight-retire  - 退休年齡（橙色）
+         * -------------------------------- */
+        function updateStats(years, cachedValues = null) {
+            const currentValue = Utils.getInputValue('currentValue');
+            const currentAge = getCurrentAge();
+            const retireAge = Utils.getInputValue('retireAge', 55);
+            // 使用快取的計算結果，避免重複計算
+            const values = cachedValues || calculateAssets(state.currentStrategy, years);
+
+            // 目前最高資產（含歷史）
+            const latestAsset = state.historyData.length > 0
+                ? Math.max(currentValue, state.historyData[state.historyData.length - 1].asset)
+                : currentValue;
+
+            const maxPredicted = Math.max(...values.map(v => v.asset));
+
+            // === 里程碑部分 ===
+            const milestonesHtml = CONFIG.MILESTONES.map(target => {
+                const achieved = latestAsset >= target;
+                let info = '';
+
+                if (achieved && state.historyData.length > 0) {
+                    const record = state.historyData.find(r => r.asset >= target);
+                    if (record) {
+                        info = `${record.date.getFullYear()}/${record.date.getMonth() + 1}`;
+                    }
+                } else if (!achieved && maxPredicted >= target) {
+                    const record = values.find(v => v.asset >= target);
+                    if (record) info = `預測 ${record.age}歲`;
+                }
+
+                return `
+                    <div class="stat-item ${achieved ? 'milestone-achieved' : 'milestone-pending'}">
+                        <div class="label">${achieved ? '✅' : '🎯'} ${target} 萬</div>
+                        <div class="value">${achieved ? '達成' : (info || '—')}</div>
+                        ${achieved && info ? `<div class="info">${info}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            // === 分隔線 ===
+            const dividerHtml = '<div class="stats-divider"></div>';
+
+            // === 關鍵年齡部分 ===
+            const agesHtml = CONFIG.DISPLAY_AGES
+                .filter(age => age >= currentAge && age <= currentAge + years)
+                .map(age => {
+                    const asset = values[age - currentAge]?.asset || 0;
+                    const isRetire = age === retireAge;
+
+                    return `
+                        <div class="stat-item age-item ${isRetire ? 'highlight-retire' : ''}">
+                            <div class="label">${age}歲${isRetire ? ' 🏖️' : ''}</div>
+                            <div class="value">${asset.toFixed(0)}</div>
+                            <div class="info">萬</div>
+                        </div>
+                    `;
+                })
+                .join('');
+
+            document.getElementById('statsGrid').innerHTML = milestonesHtml + dividerHtml + agesHtml;
+        }
+
+        // ========== 事件管理 ==========
+        // 目前選擇的事件類型
+        let currentEventType = 'income';
+
+        function setEventType(type) {
+            currentEventType = type;
+
+            // 更新按鈕狀態
+            document.querySelectorAll('.type-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.type === type);
+            });
+
+            // 更新預設值
+            if (type === 'income') {
+                Utils.setInputValue('eventAmount', 10);
+                Utils.setInputValue('eventDesc', '年終獎金');
+            } else {
+                Utils.setInputValue('eventAmount', 100);
+                Utils.setInputValue('eventDesc', '購車');
+            }
+        }
+
+        function addEvent() {
+            const age = parseInt(document.getElementById('eventAge').value);
+            const amount = parseFloat(document.getElementById('eventAmount').value);
+            const desc = document.getElementById('eventDesc').value;
+            const type = currentEventType;
+
+            if (age && amount > 0) {
+                state.events.push({ age, amount, desc, type });
+                refreshEventList();
+                updateAllCalculations();
+                markCashflowChanged();
+                saveAllData();
+            }
+        }
+
+        // 快速新增事件（合併 income/expense）
+        function quickAddEvent(age, amount, desc, type) {
+            state.events.push({ age, amount, desc, type });
+            refreshEventList();
+            updateAllCalculations();
+            markCashflowChanged();
+            saveAllData();
+        }
+
+        // 向下相容的包裝函數
+        function quickAddIncome(age, amount, desc) {
+            quickAddEvent(age, amount, desc, 'income');
+        }
+
+        function quickAddExpense(age, amount, desc) {
+            quickAddEvent(age, amount, desc, 'expense');
+        }
+
+        function deleteEvent(index) {
+            state.events.splice(index, 1);
+            refreshEventList();
+            updateAllCalculations();
+            markCashflowChanged();
+            saveAllData();
+        }
+
+        function refreshEventList() {
+            // 按年齡排序
+            const sorted = [...state.events].sort((a, b) => a.age - b.age);
+
+            const html = sorted.map((e, i) => {
+                const originalIndex = state.events.indexOf(e);
+                const isIncome = e.type === 'income';
+                const icon = isIncome ? '💰' : '💸';
+                const sign = isIncome ? '+' : '-';
+                const amountClass = isIncome ? 'positive' : 'negative';
+
+                return `
+                    <div class="event-item ${e.type || 'expense'}">
+                        <span>
+                            ${icon} ${e.age}歲 - ${e.desc}
+                            <span class="event-amount ${amountClass}">${sign}${e.amount}萬</span>
+                        </span>
+                        <button class="delete-btn" onclick="deleteEvent(${originalIndex})">×</button>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('eventList').innerHTML = html;
+        }
+
+        // ========== 工具函數 ==========
+        function calculateInflation() {
+            const amount = Utils.getInputValue('inflationAmount', 100);
+            const years = Utils.getInputValue('inflationYears', 20);
+            const rate = Utils.getInputValue('inflationRate', 2) / 100;
+
+            const futureValue = Calculator.futureValue(amount, rate, years);
+            const purchasingPower = amount / Math.pow(1 + rate, years);
+
+            const result = document.getElementById('inflationResult');
+            result.innerHTML = `
+                <div>💰 ${amount} 萬在 ${years} 年後：</div>
+                <div style="margin-top: 5px;">• 等值購買力：<strong style="color: var(--color-primary);">${purchasingPower.toFixed(1)} 萬</strong></div>
+                <div>• 需要 <strong style="color: var(--color-warning);">${futureValue.toFixed(1)} 萬</strong> 才有相同購買力</div>
+            `;
+            result.classList.add('active');
+        }
+
+        // 從歷史紀錄自動帶入 IRR 計算參數
+        function autoFillIRR() {
+            // 從投資規劃取得每月投入
+            const monthly = Utils.getInputValue('monthlyContribution', 2.5);
+            Utils.setInputValue('irrMonthly', monthly);
+
+            // 從歷史紀錄計算投資月數
+            if (state.historyData.length >= 2) {
+                const first = state.historyData[0];
+                const last = state.historyData[state.historyData.length - 1];
+                const months = Math.round((last.date - first.date) / (1000 * 60 * 60 * 24 * 30));
+                Utils.setInputValue('irrMonths', months);
+
+                // 設定目前資產
+                Utils.setInputValue('irrAsset', last.asset.toFixed(1));
+
+                showStatus(`✅ 已帶入：${monthly}萬/月 × ${months}月 → ${last.asset.toFixed(0)}萬`, 'success');
+
+                // 自動計算 IRR
+                calculateIRR();
+            } else {
+                showStatus('⚠️ 需要至少 2 筆歷史紀錄才能計算', 'warning');
+            }
+        }
+
+        function calculateIRR() {
+            const monthly = Utils.getInputValue('irrMonthly', 2.5);
+            const months = Utils.getInputValue('irrMonths', 68);
+            const asset = Utils.getInputValue('irrAsset', 192);
+
+            const annualRate = Calculator.calculateIRR(monthly, months, asset);
+            const totalCost = monthly * months;
+            const profit = asset - totalCost;
+
+            const result = document.getElementById('irrResult');
+            result.innerHTML = `
+                <div>📊 IRR 計算結果：</div>
+                <div style="margin-top: 5px;">• 總投入：<strong>${totalCost.toFixed(1)} 萬</strong></div>
+                <div>• 獲利：<strong style="color: ${profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)'};">${profit >= 0 ? '+' : ''}${profit.toFixed(1)} 萬</strong></div>
+                <div>• 年化報酬率 (IRR)：<strong style="color: var(--color-primary);">${annualRate.toFixed(2)}%</strong></div>
+            `;
+            result.classList.add('active');
+        }
+
+        // ========== Google Sheet 讀取（一個用戶一個分頁）==========
+
+        /* --------------------------------
+         * 4. Google Sheet 同步功能
+         * --------------------------------
+         * 讀取：fetchSheet() → parseUserSheet() → state
+         * 寫入：syncToSheet() → Apps Script → Sheet
+         *
+         * Sheet 格式：
+         *   每個用戶一個分頁，分頁名稱 = 用戶名
+         *   分頁內有多個區塊：投資紀錄、基本設定、特殊現金流、住房設定
+         *
+         * 注意：
+         *   - 使用 JSONP 讀取（gviz/tq API）
+         *   - 使用 Apps Script POST 寫入
+         *   - headers=0 參數避免 API 把行當標題
+         * -------------------------------- */
+
+        // 取得用戶分頁名稱
+        function getUserSheetName(userId = state.currentUser) {
+            return CONFIG.USERS[userId]?.name || userId;
+        }
+
+        // 讀取單一分頁（JSONP 方式）
+        function fetchSheet(sheetId, sheetName) {
+            return new Promise((resolve, reject) => {
+                const callbackName = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+                // headers=0 告訴 API 不要把任何行當作標題
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${callbackName}&sheet=${encodeURIComponent(sheetName)}&headers=0`;
+
+                const timeout = setTimeout(() => {
+                    delete window[callbackName];
+                    if (script.parentNode) document.body.removeChild(script);
+                    reject(new Error(`讀取 "${sheetName}" 超時`));
+                }, 10000);
+
+                window[callbackName] = function(response) {
+                    clearTimeout(timeout);
+                    delete window[callbackName];
+                    if (script.parentNode) document.body.removeChild(script);
+
+                    if (response.status === 'error') {
+                        // 分頁不存在時不報錯，返回空資料
+                        resolve({ table: { rows: [] }, sheetName });
+                    } else {
+                        resolve({ ...response, sheetName });
+                    }
+                };
+
+                const script = document.createElement('script');
+                script.src = url;
+                script.onerror = () => {
+                    clearTimeout(timeout);
+                    delete window[callbackName];
+                    if (script.parentNode) document.body.removeChild(script);
+                    resolve({ table: { rows: [] }, sheetName }); // 失敗時返回空資料
+                };
+                document.body.appendChild(script);
+            });
+        }
+
+        // 主要讀取函數（讀取用戶分頁）
+        async function loadSheetData() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+
+            if (!sheetId) {
+                showStatus('請輸入 Google Sheet ID', 'error');
+                return;
+            }
+
+            localStorage.setItem('investmentSheetId', sheetId);
+
+            const btn = document.getElementById('loadBtn');
+            btn.disabled = true;
+            btn.textContent = '載入中...';
+
+            const userSheetName = getUserSheetName();
+            showStatus(`正在讀取「${userSheetName}」分頁...`, 'loading');
+
+            try {
+                // 讀取用戶分頁
+                const response = await fetchSheet(sheetId, userSheetName);
+
+                if (!response.table?.rows?.length) {
+                    throw new Error(`找不到「${userSheetName}」分頁或分頁為空`);
+                }
+
+                // 解析合併分頁
+                parseUserSheet(response.table);
+
+                const summary = [];
+                if (state.historyData.length > 0) summary.push(`${state.historyData.length} 筆紀錄`);
+                if (state.events.length > 0) summary.push(`${state.events.length} 筆現金流`);
+
+                showStatus(`✅ 成功載入：${summary.join('、') || '設定'}`, 'success');
+                onHistoryDataLoaded();
+
+            } catch (error) {
+                console.error('Load error:', error);
+                showStatus('讀取失敗：' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📥 讀取';
+            }
+        }
+
+        // 解析用戶分頁（包含所有區塊）
+        function parseUserSheet(table) {
+            // 重置 state
+            state.historyData = [];
+            state.events = [];
+
+            let currentSection = null;
+            const tempSettings = {};
+            const tempHousing = {};
+
+            for (const row of table.rows) {
+                if (!row.c || row.c.length === 0) continue;
+
+                const firstCell = row.c[0]?.v?.toString().trim() || '';
+
+                // 檢測區塊標題
+                if (firstCell.startsWith('【') && firstCell.endsWith('】')) {
+                    currentSection = firstCell.replace(/[【】]/g, '');
+                    continue;
+                }
+
+                // 跳過標題行
+                if (['日期', '項目', '年齡'].includes(firstCell)) continue;
+
+                // 根據區塊解析
+                if (currentSection === '投資紀錄') {
+                    const date = row.c[0] ? (Utils.parseDate(row.c[0].v) || Utils.parseDate(row.c[0].f)) : null;
+                    const cost = parseSheetNum(row.c[1]);
+                    const asset = parseSheetNum(row.c[2]);
+                    const note = row.c[3]?.v ? String(row.c[3].v) : '';
+
+                    if (date && !isNaN(cost) && !isNaN(asset) && cost > 0) {
+                        state.historyData.push({ date, cost, asset, note });
+                    }
+                } else if (currentSection === '基本設定') {
+                    const key = firstCell;
+                    const value = row.c[1]?.v;
+                    if (key && value !== undefined) {
+                        tempSettings[key] = value;
+                    }
+                } else if (currentSection === '特殊現金流') {
+                    const age = parseSheetNum(row.c[0]);
+                    const typeStr = row.c[1]?.v?.toString().trim() || '';
+                    const amount = parseSheetNum(row.c[2]);
+                    const desc = row.c[3]?.v ? String(row.c[3].v) : '';
+
+                    const type = (typeStr === '收入' || typeStr.toLowerCase() === 'income') ? 'income' : 'expense';
+
+                    if (age > 0 && amount > 0) {
+                        state.events.push({ age, amount, desc, type });
+                    }
+                } else if (currentSection === '住房設定') {
+                    const key = firstCell;
+                    const value = row.c[1]?.v;
+                    if (key && value !== undefined) {
+                        tempHousing[key] = value;
+                    }
+                }
+            }
+
+            // 排序歷史資料
+            state.historyData.sort((a, b) => a.date - b.date);
+
+            // 套用基本設定
+            applySettings(tempSettings);
+
+            // 套用住房設定
+            applyHousingSettings(tempHousing);
+
+            // 刷新事件列表
+            refreshEventList();
+        }
+
+        // 套用基本設定到表單
+        function applySettings(settings) {
+            const mapping = {
+                '每月投入': 'monthlyContribution',
+                '預估報酬率': 'annualRate',
+                '退休年齡': 'retireAge',
+                '預估壽命': 'lifeExpectancy',
+                '每月開銷': 'currentExpense',
+                '通膨率': 'expenseInflation',
+                '預測至年齡': 'targetAge'
+            };
+
+            Object.entries(mapping).forEach(([sheetKey, inputId]) => {
+                if (settings[sheetKey] !== undefined) {
+                    Utils.setInputValue(inputId, settings[sheetKey]);
+                }
+            });
+
+            if (settings['預估報酬率']) {
+                document.getElementById('rateDisplay').textContent = settings['預估報酬率'] + '%';
+            }
+        }
+
+        // 套用住房設定
+        function applyHousingSettings(settings) {
+            const mapping = {
+                '購房年齡': 'buyAge',
+                '房價': 'housePrice',
+                '頭期款%': 'downPaymentPercent',
+                '貸款利率': 'mortgageRate',
+                '貸款年限': 'mortgageYears',
+                '房價年漲%': 'houseAppreciation',
+                '月租金': 'rentMonthly',
+                '租金漲幅%': 'rentIncrease',
+                '先租月租': 'mixedRentMonthly',
+                '先租漲幅%': 'mixedRentIncrease',
+                '先租後買年齡': 'mixedBuyAge',
+                '先租後買房價': 'mixedHousePrice',
+                '先租後買頭期%': 'mixedDownPayment',
+                '先租後買利率': 'mixedMortgageRate'
+            };
+
+            Object.entries(mapping).forEach(([sheetKey, inputId]) => {
+                if (settings[sheetKey] !== undefined) {
+                    Utils.setInputValue(inputId, settings[sheetKey]);
+                }
+            });
+
+            const strategy = settings['策略']?.toString().toLowerCase();
+            if (['none', 'buy', 'rent', 'mixed'].includes(strategy)) {
+                selectStrategy(strategy);
+            }
+        }
+
+        // 輔助：解析數值
+        function parseSheetNum(cell) {
+            if (!cell?.v) return 0;
+            return typeof cell.v === 'number' ? cell.v : parseFloat(String(cell.v).replace(/,/g, ''));
+        }
+
+        /* --------------------------------
+         * 6. 歷史回顧功能
+         * --------------------------------
+         * 顯示內容：
+         *   - 總投入（最新紀錄的 cost）
+         *   - 目前資產（最新紀錄的 asset）
+         *   - 總獲利（金額 + 百分比）
+         *   - 投資期間（第一筆到最後一筆）
+         *
+         * 注意：
+         *   已移除 IRR 和近期/長期績效顯示
+         *   因為快照式紀錄無法準確計算時間加權報酬
+         * -------------------------------- */
+        function onHistoryDataLoaded() {
+            if (!state.historyData || state.historyData.length === 0) {
+                document.getElementById('historySummary').classList.remove('active');
+                return;
+            }
+
+            // 計算歷史 IRR
+            state.historicalIRR = calculateHistoricalIRR();
+
+            const first = state.historyData[0];
+            const last = state.historyData[state.historyData.length - 1];
+
+            // 計算基本數據
+            const totalCost = last.cost;
+            const currentAsset = last.asset;
+            const profit = currentAsset - totalCost;
+            const profitPercent = totalCost > 0 ? ((profit / totalCost) * 100) : 0;
+
+            // 計算投資期間
+            const months = Math.round((last.date - first.date) / (1000 * 60 * 60 * 24 * 30));
+            const years = Math.floor(months / 12);
+            const remainMonths = months % 12;
+            const periodText = years > 0
+                ? `${years} 年 ${remainMonths} 個月`
+                : `${months} 個月`;
+
+            // 更新總覽
+            document.getElementById('historyCost').textContent = totalCost.toFixed(0) + ' 萬';
+            document.getElementById('historyAsset').textContent = currentAsset.toFixed(0) + ' 萬';
+            document.getElementById('historyProfit').textContent =
+                (profit >= 0 ? '+' : '') + profit.toFixed(0) + ' 萬（' +
+                (profitPercent >= 0 ? '+' : '') + profitPercent.toFixed(1) + '%）';
+            document.getElementById('historyPeriod').textContent = periodText;
+
+            // 更新投資規劃的「目前資產」
+            document.getElementById('currentValue').value = currentAsset.toFixed(0);
+            updateHeaderAsset(currentAsset);
+
+            document.getElementById('historySummary').classList.add('active');
+
+            // 渲染歷史紀錄列表
+            renderHistoryList();
+
+            updateChart();
+        }
+
+        // 展開/收合歷史紀錄列表
+        function toggleHistoryList() {
+            const container = document.getElementById('historyListContainer');
+            const toggleText = document.getElementById('historyListToggleText');
+            const isExpanded = container.classList.toggle('expanded');
+
+            toggleText.textContent = isExpanded ? '📋 收合詳細紀錄' : '📋 展開詳細紀錄';
+        }
+
+        // 渲染歷史紀錄列表
+        function renderHistoryList() {
+            const tbody = document.getElementById('historyTableBody');
+            const countSpan = document.getElementById('historyListCount');
+
+            if (!state.historyData || state.historyData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color: var(--color-text-muted);">尚無紀錄</td></tr>';
+                countSpan.textContent = '';
+                return;
+            }
+
+            countSpan.textContent = `（${state.historyData.length} 筆）`;
+
+            // 按日期倒序顯示（最新的在上面）
+            const sortedData = [...state.historyData].sort((a, b) => b.date - a.date);
+
+            tbody.innerHTML = sortedData.map((record, sortedIndex) => {
+                // 找到原始 index（用於刪除）
+                const originalIndex = state.historyData.findIndex(
+                    r => r.date.getTime() === record.date.getTime()
+                );
+                const dateStr = record.date.toISOString().split('T')[0];
+                const noteHtml = record.note
+                    ? `<span title="${record.note}">${record.note}</span>`
+                    : '<span style="color: var(--color-text-muted);">-</span>';
+
+                return `
+                    <tr>
+                        <td>${dateStr}</td>
+                        <td>${record.cost.toFixed(1)}</td>
+                        <td>${record.asset.toFixed(1)}</td>
+                        <td class="note">${noteHtml}</td>
+                        <td class="delete-btn" onclick="deleteHistoryRecord(${originalIndex})" title="刪除">✕</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 刪除歷史紀錄
+        async function deleteHistoryRecord(index) {
+            if (!confirm('確定要刪除這筆紀錄嗎？')) return;
+
+            const sheetId = document.getElementById('sheetId').value.trim();
+            const url = document.getElementById('appsScriptUrl').value.trim();
+
+            // ★ 先從 Sheet 載入最新資料
+            if (sheetId) {
+                try {
+                    const userSheetName = getUserSheetName();
+                    const response = await fetchSheet(sheetId, userSheetName);
+                    if (response.table?.rows?.length) {
+                        parseUserSheet(response.table);
+                    }
+                } catch (error) {
+                    console.log('Pre-load skipped:', error.message);
+                }
+            }
+
+            // 重新計算 index（因為資料可能已更新）
+            if (index >= state.historyData.length) {
+                showStatus('紀錄已不存在', 'error');
+                renderHistoryList();
+                return;
+            }
+
+            state.historyData.splice(index, 1);
+
+            if (state.historyData.length > 0) {
+                onHistoryDataLoaded();
+                saveAllData();
+
+                // 同步到 Sheet
+                if (url) {
+                    await syncAllToSheet('正在同步刪除...');
+                    showStatus('✅ 已刪除並同步', 'success');
+                }
+            } else {
+                // 沒有紀錄了
+                document.getElementById('historySummary').classList.remove('active');
+                updateHeaderAsset(null);
+                renderHistoryList();
+                saveAllData();
+
+                // 同步空資料到 Sheet
+                if (url) {
+                    await syncAllToSheet('正在同步...');
+                }
+            }
+        }
+
+        function calculateHistoricalIRR() {
+            if (state.historyData.length < 2) return 0;
+
+            // 使用實際現金流計算 IRR
+            // 建立每月的現金流序列
+            const first = state.historyData[0];
+            const last = state.historyData[state.historyData.length - 1];
+
+            // 計算每期的投入金額（本期成本 - 上期成本）
+            const cashflows = [];
+            let prevCost = 0;
+
+            for (let i = 0; i < state.historyData.length; i++) {
+                const record = state.historyData[i];
+                const contribution = record.cost - prevCost;
+                if (contribution > 0) {
+                    cashflows.push({
+                        date: record.date,
+                        amount: -contribution  // 投入為負數（流出）
+                    });
+                }
+                prevCost = record.cost;
+            }
+
+            // 加入最終資產價值（流入）
+            cashflows.push({
+                date: last.date,
+                amount: last.asset
+            });
+
+            // 使用 XIRR 計算（考慮實際日期）
+            return calculateXIRR(cashflows);
+        }
+
+        // XIRR 計算（考慮實際日期的 IRR）
+        function calculateXIRR(cashflows, guess = 0.1) {
+            if (cashflows.length < 2) return 0;
+
+            const firstDate = cashflows[0].date;
+            const daysInYear = 365;
+
+            // 計算每筆現金流距離第一筆的年數
+            const flows = cashflows.map(cf => ({
+                amount: cf.amount,
+                years: (cf.date - firstDate) / (daysInYear * 24 * 60 * 60 * 1000)
+            }));
+
+            // Newton-Raphson 迭代求解
+            let rate = guess;
+            const maxIterations = 100;
+            const tolerance = 0.0001;
+
+            for (let i = 0; i < maxIterations; i++) {
+                let npv = 0;
+                let derivative = 0;
+
+                for (const flow of flows) {
+                    const factor = Math.pow(1 + rate, flow.years);
+                    npv += flow.amount / factor;
+                    derivative -= flow.years * flow.amount / (factor * (1 + rate));
+                }
+
+                if (Math.abs(npv) < tolerance) {
+                    return rate * 100;  // 轉為百分比
+                }
+
+                if (Math.abs(derivative) < 1e-10) {
+                    break;  // 避免除以零
+                }
+
+                rate = rate - npv / derivative;
+
+                // 限制範圍避免發散
+                if (rate < -0.99) rate = -0.99;
+                if (rate > 10) rate = 10;
+            }
+
+            // 若 Newton-Raphson 失敗，使用二分法
+            return calculateXIRRBisection(flows);
+        }
+
+        // 二分法計算 XIRR（備用方法）
+        function calculateXIRRBisection(flows) {
+            let low = -0.99;
+            let high = 10;
+            const tolerance = 0.0001;
+
+            for (let i = 0; i < 100; i++) {
+                const mid = (low + high) / 2;
+                let npv = 0;
+
+                for (const flow of flows) {
+                    npv += flow.amount / Math.pow(1 + mid, flow.years);
+                }
+
+                if (Math.abs(npv) < tolerance) {
+                    return mid * 100;
+                }
+
+                if (npv > 0) {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+
+            return ((low + high) / 2) * 100;
+        }
+
+        // ========== 套用歷史資料到模擬器 ==========
+        function applyHistoryToSimulator() {
+            if (state.historyData.length === 0) {
+                showStatus('沒有歷史資料可套用', 'error');
+                return;
+            }
+
+            const first = state.historyData[0];
+            const last = state.historyData[state.historyData.length - 1];
+            const applied = [];
+
+            // 更新目前資產
+            Utils.setInputValue('currentValue', last.asset.toFixed(0));
+            updateHeaderAsset(last.asset);
+            applied.push(`資產 ${last.asset.toFixed(0)} 萬`);
+
+            // 更新年化報酬率（如果歷史 IRR 在合理範圍內）
+            if (state.historicalIRR >= 4 && state.historicalIRR <= 25) {
+                Utils.setInputValue('annualRate', state.historicalIRR.toFixed(1));
+                document.getElementById('rateDisplay').textContent = state.historicalIRR.toFixed(1) + '%';
+                applied.push(`報酬率 ${state.historicalIRR.toFixed(1)}%`);
+            } else if (state.historicalIRR > 25) {
+                // IRR 超出範圍，使用上限
+                Utils.setInputValue('annualRate', '20');
+                document.getElementById('rateDisplay').textContent = '20%';
+                applied.push(`報酬率 20%（IRR ${state.historicalIRR.toFixed(0)}% 超出範圍）`);
+            }
+
+            // 計算每月投入
+            const months = (last.date.getFullYear() - first.date.getFullYear()) * 12 +
+                          (last.date.getMonth() - first.date.getMonth());
+            if (months > 0) {
+                const monthlyAvg = (last.cost / months).toFixed(1);
+                Utils.setInputValue('monthlyContribution', monthlyAvg);
+                applied.push(`月投入 ${monthlyAvg} 萬`);
+            }
+
+            showStatus(`✅ 已套用：${applied.join('、')}`, 'success');
+            updateAllCalculations();
+        }
+
+
+        // ========== 測試連線 ==========
+        async function testConnection() {
+            const url = document.getElementById('appsScriptUrl').value.trim();
+            const statusEl = document.getElementById('connectionStatus');
+            const btn = document.getElementById('testConnBtn');
+
+            if (!url) {
+                statusEl.innerHTML = '<span style="color: var(--color-danger);">請先填入 URL</span>';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = '測試中...';
+            statusEl.innerHTML = '<span style="color: var(--color-warning);">⏳</span>';
+
+            try {
+                // 使用 doGet 測試連線
+                const testUrl = url.replace('/exec', '/exec?test=1');
+                const response = await fetch(testUrl, { method: 'GET' });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        state.connectionVerified = true;
+                        localStorage.setItem('appsScriptUrl', url);
+                        statusEl.innerHTML = '<span style="color: var(--color-success);">✅ 連線成功</span>';
+                        showStatus('連線測試成功！', 'success');
+                    } else {
+                        throw new Error('回應格式不正確');
+                    }
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                // 由於 CORS 限制，GET 可能會失敗，但不代表 POST 不行
+                // 保存 URL 並給予警告
+                localStorage.setItem('appsScriptUrl', url);
+                state.connectionVerified = false;
+                statusEl.innerHTML = '<span style="color: var(--color-warning);">⚠️ 無法驗證（CORS）</span>';
+                showStatus('無法驗證連線（CORS 限制），但 URL 已儲存', 'loading');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔍 測試連線';
+            }
+        }
+
+        /* --------------------------------
+         * 5. 快速記錄功能
+         * --------------------------------
+         * ⚠️ 限制說明：
+         *   此功能記錄「累計成本」與「當前資產」的快照
+         *   不記錄每筆定期定額的投入時間
+         *   因此無法計算精確的時間加權報酬（XIRR）
+         *
+         * 流程：
+         *   1. 先從 Sheet 載入現有資料（避免覆蓋）
+         *   2. 新增/更新紀錄到 state.historyData
+         *   3. 同步完整資料到 Sheet
+         *   4. 更新 UI（歷史回顧、圖表）
+         *
+         * 適用場景：
+         *   - 定期記錄資產狀態（如每月底）
+         *   - 追蹤資產成長軌跡
+         * -------------------------------- */
+        async function quickRecordAndSync() {
+            const date = document.getElementById('quickRecordDate').value;
+            const cost = parseFloat(document.getElementById('quickRecordCost').value);
+            const asset = parseFloat(document.getElementById('quickRecordAsset').value);
+            const note = document.getElementById('quickRecordNote').value.trim();
+            const url = document.getElementById('appsScriptUrl').value.trim();
+            const sheetId = document.getElementById('sheetId').value.trim();
+
+            // 驗證
+            if (!date) {
+                showStatus('請選擇日期', 'error');
+                return;
+            }
+            if (!cost || cost <= 0) {
+                showStatus('請輸入有效的本金', 'error');
+                return;
+            }
+            if (!asset || asset <= 0) {
+                showStatus('請輸入有效的資產', 'error');
+                return;
+            }
+            if (!url) {
+                showStatus('請先設定 Apps Script URL', 'error');
+                return;
+            }
+            if (!sheetId) {
+                showStatus('請先設定 Sheet ID', 'error');
+                return;
+            }
+
+            // ★ 重要：同步前先從 Sheet 載入最新資料，避免覆蓋
+            showStatus('正在載入 Sheet 資料...', 'loading');
+            const previousCount = state.historyData.length;
+            try {
+                const userSheetName = getUserSheetName();
+                const response = await fetchSheet(sheetId, userSheetName);
+                if (response.table?.rows?.length) {
+                    parseUserSheet(response.table);
+                }
+            } catch (error) {
+                console.error('Pre-load failed:', error);
+                // 載入失敗時警告用戶
+                if (previousCount === 0) {
+                    const proceed = confirm('⚠️ 無法從 Sheet 載入現有資料，繼續可能會覆蓋舊資料。是否繼續？');
+                    if (!proceed) {
+                        showStatus('已取消', 'warning');
+                        return;
+                    }
+                }
+            }
+
+            // 新增到歷史資料
+            const newRecord = {
+                date: new Date(date),
+                cost: cost,
+                asset: asset,
+                note: note
+            };
+
+            // 檢查是否已有相同日期的紀錄
+            const existingIndex = state.historyData.findIndex(
+                h => h.date.toISOString().split('T')[0] === date
+            );
+
+            if (existingIndex >= 0) {
+                // 更新現有紀錄
+                state.historyData[existingIndex] = newRecord;
+            } else {
+                // 新增紀錄
+                state.historyData.push(newRecord);
+            }
+
+            // 排序（確保按日期排列）
+            state.historyData.sort((a, b) => a.date - b.date);
+
+            // 更新表單的目前資產（用最新一筆紀錄的資產，而非剛輸入的）
+            const latestRecord = state.historyData[state.historyData.length - 1];
+            Utils.setInputValue('currentValue', latestRecord.asset.toFixed(0));
+            updateHeaderAsset(latestRecord.asset);
+
+            // 同步所有資料到 Sheet
+            const success = await syncAllToSheet('正在同步...');
+
+            if (success) {
+                // 更新 UI
+                onHistoryDataLoaded();
+                saveAllData();
+
+                showStatus(`✅ 已記錄 ${date} 的收益並同步到「${getUserSheetName()}」`, 'success');
+
+                // 清空輸入
+                document.getElementById('quickRecordCost').value = '';
+                document.getElementById('quickRecordAsset').value = '';
+                document.getElementById('quickRecordNote').value = '';
+                document.getElementById('quickRecordResult').classList.remove('active');
+            }
+        }
+
+        // ========== 同步現金流到 Sheet ==========
+        async function syncCashflowToSheet() {
+            // 同步所有資料（包含現金流）
+            const success = await syncAllToSheet('正在同步現金流...');
+
+            if (success) {
+                state.cashflowChanged = false;
+                document.getElementById('cashflowSyncSection').style.display = 'none';
+                showStatus(`✅ 已同步到「${getUserSheetName()}」分頁`, 'success');
+                saveAllData();
+            }
+        }
+
+        // 標記現金流有變更
+        function markCashflowChanged() {
+            state.cashflowChanged = true;
+            document.getElementById('cashflowSyncSection').style.display = 'block';
+        }
+
+        // ========== 統一同步函數 ==========
+
+        // 取得完整同步資料
+        function getFullSyncData() {
+            return {
+                action: 'saveAll',
+                userName: getUserSheetName(),
+
+                // 投資紀錄
+                history: state.historyData.map(h => ({
+                    date: h.date.toISOString().split('T')[0],
+                    cost: h.cost,
+                    asset: h.asset,
+                    note: h.note || ''
+                })),
+
+                // 基本設定
+                settings: {
+                    monthlyContribution: Utils.getInputValue('monthlyContribution'),
+                    annualRate: Utils.getInputValue('annualRate'),
+                    retireAge: Utils.getInputValue('retireAge'),
+                    lifeExpectancy: Utils.getInputValue('lifeExpectancy'),
+                    currentExpense: Utils.getInputValue('currentExpense'),
+                    expenseInflation: Utils.getInputValue('expenseInflation'),
+                    targetAge: Utils.getInputValue('targetAge')
+                },
+
+                // 特殊現金流
+                cashflow: state.events.map(e => ({
+                    age: e.age,
+                    type: e.type,
+                    amount: e.amount,
+                    desc: e.desc
+                })),
+
+                // 住房設定
+                housing: {
+                    strategy: state.currentStrategy,
+                    buyAge: Utils.getInputValue('buyAge'),
+                    housePrice: Utils.getInputValue('housePrice'),
+                    downPaymentPercent: Utils.getInputValue('downPaymentPercent'),
+                    mortgageRate: Utils.getInputValue('mortgageRate'),
+                    mortgageYears: Utils.getInputValue('mortgageYears'),
+                    houseAppreciation: Utils.getInputValue('houseAppreciation'),
+                    rentMonthly: Utils.getInputValue('rentMonthly'),
+                    rentIncrease: Utils.getInputValue('rentIncrease')
+                }
+            };
+        }
+
+        // 同步所有資料到 Sheet
+        async function syncAllToSheet(statusMessage = '正在同步...') {
+            const url = document.getElementById('appsScriptUrl').value.trim();
+
+            if (!url) {
+                showStatus('請先設定 Apps Script URL（設定與工具 → Sheet 連接設定）', 'error');
+                return false;
+            }
+
+            showStatus(statusMessage, 'loading');
+
+            try {
+                const data = getFullSyncData();
+
+                await fetch(url, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                return true;
+            } catch (error) {
+                console.error('Sync error:', error);
+                showStatus('同步失敗：' + error.message, 'error');
+                return false;
+            }
+        }
+
+        // ========== 資料儲存/載入 ==========
+
+        // 儲存所有資料到 localStorage
+        // 儲存設定到 localStorage（只儲存連線設定，不儲存用戶資料）
+        function saveConnectionSettings() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+            const appsScriptUrl = document.getElementById('appsScriptUrl').value.trim();
+
+            if (sheetId) localStorage.setItem('investmentSheetId', sheetId);
+            if (appsScriptUrl) localStorage.setItem('appsScriptUrl', appsScriptUrl);
+            localStorage.setItem('currentUser', state.currentUser);
+        }
+
+        // 舊函數保留但改為只儲存連線設定
+        function saveAllData() {
+            saveConnectionSettings();
+        }
+
+        // 舊版相容（保留）
+        function saveHistoryData() {
+            saveAllData();
+        }
+
+        // 只載入連線設定（Sheet ID、Apps Script URL）
+        function loadSavedData() {
+            // 載入 Sheet ID
+            const savedSheetId = localStorage.getItem('investmentSheetId');
+            if (savedSheetId) {
+                Utils.setInputValue('sheetId', savedSheetId);
+            }
+
+            // 載入 Apps Script URL
+            const savedAppsScriptUrl = localStorage.getItem('appsScriptUrl');
+            if (savedAppsScriptUrl) {
+                Utils.setInputValue('appsScriptUrl', savedAppsScriptUrl);
+            }
+
+            // 不再從 localStorage 載入用戶資料
+            // 所有資料都從 Sheet 載入（在 autoLoadFromSheet 中處理）
+        }
+
+        // 載入舊版 localStorage 資料（向後相容）
+        // ========== 工具函數 ==========
+        function copyTemplate() {
+            const templateId = '1QFHh9wdLXs7HnmlGDYFLZuMpMzUsv4go1SchPYFyrSA';
+            window.open(`https://docs.google.com/spreadsheets/d/${templateId}/copy`, '_blank');
+            showStatus('請在新視窗中完成複製', 'success');
+        }
+
+        function extractSheetId(input) {
+            let value = input.value.trim();
+            if (value.includes('docs.google.com/spreadsheets')) {
+                const match = value.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                if (match) input.value = match[1];
+            }
+        }
+
+        function showStatus(message, type) {
+            const el = document.getElementById('status');
+            el.textContent = message;
+            el.className = 'status ' + type;
+        }
+    </script>
+</body>
+</html>
