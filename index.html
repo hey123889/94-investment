@@ -2755,7 +2755,7 @@
         // 解析 URL 參數並套用設定
         // 支援參數：
         //   - sheet: Google Sheet ID
-        //   - user: 用戶 ID (me/judy/或自訂)
+        //   - user: 用戶 ID (hey/judy/或自訂)
         function applyUrlParams() {
             const params = new URLSearchParams(window.location.search);
 
@@ -2766,12 +2766,15 @@
                 localStorage.setItem('investmentSheetId', sheetParam);
             }
 
-            // 用戶選擇
-            const userParam = params.get('user');
+            // 用戶選擇（支援別名：me → hey）
+            let userParam = params.get('user');
+            if (userParam === 'me') userParam = 'hey';  // 別名轉換
+
             if (userParam && CONFIG.USERS[userParam]) {
                 state.currentUser = userParam;
                 localStorage.setItem('currentUser', userParam);
                 renderUserSelector();
+                updateCurrentAge();  // ★ 確保生日立即更新
             }
         }
 
@@ -2864,11 +2867,18 @@
             loadCustomUsers();
 
             const container = document.getElementById('userSelector');
-            const savedUser = localStorage.getItem('currentUser') || CONFIG.DEFAULT_USER;
+            let savedUser = localStorage.getItem('currentUser') || CONFIG.DEFAULT_USER;
+
+            // 支援別名（me → hey）
+            if (savedUser === 'me') {
+                savedUser = 'hey';
+                localStorage.setItem('currentUser', 'hey');  // 更正儲存
+            }
 
             // 確保用戶存在，否則回到預設
             if (!CONFIG.USERS[savedUser]) {
                 state.currentUser = CONFIG.DEFAULT_USER;
+                localStorage.setItem('currentUser', CONFIG.DEFAULT_USER);  // 更正儲存
             } else {
                 state.currentUser = savedUser;
             }
@@ -2993,6 +3003,15 @@
 
         // 選擇用戶
         async function selectUser(userId) {
+            // 支援別名（me → hey）
+            if (userId === 'me') userId = 'hey';
+
+            // 確保用戶存在
+            if (!CONFIG.USERS[userId]) {
+                console.warn('用戶不存在:', userId);
+                return;
+            }
+
             if (userId === state.currentUser) return;  // 相同用戶，不處理
 
             // 1. 先儲存當前用戶的資料
@@ -3002,6 +3021,8 @@
             const previousUser = state.currentUser;
             state.currentUser = userId;
             localStorage.setItem('currentUser', userId);
+
+            console.log('切換用戶:', previousUser, '→', userId, '生日:', CONFIG.USERS[userId].birthDate);
 
             // 3. 重置 state（避免資料混淆）
             state.historyData = [];
@@ -3074,13 +3095,28 @@
         }
 
         function updateCurrentAge() {
-            const age = Utils.getAge();
-            const birthDate = Utils.getBirthDate();
+            // 確保讀取當前用戶的生日
+            const user = CONFIG.USERS[state.currentUser];
+            if (!user) {
+                console.warn('無效用戶:', state.currentUser);
+                return 0;
+            }
+
+            const birthDate = user.birthDate;
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+
             const birthStr = `${birthDate.getFullYear()}/${birthDate.getMonth() + 1}/${birthDate.getDate()}`;
 
             // 更新 Header 顯示
             document.getElementById('headerBirthDate').textContent = birthStr;
             document.getElementById('headerAge').textContent = age;
+
+            console.log('更新年齡:', state.currentUser, birthStr, age + '歲');
             return age;
         }
 
