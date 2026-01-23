@@ -88,7 +88,18 @@
             padding-bottom: max(20px, env(safe-area-inset-bottom));
             background: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-light) 100%);
             min-height: 100vh;
+            min-height: 100dvh; /* 動態視口高度（解決旋轉後高度問題） */
             color: var(--color-text);
+            /* 防止 iOS 頁面縮放跳動 */
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* 強制重繪（修復旋轉後佈局問題） */
+        @media (orientation: portrait) {
+            .container { transform: translateZ(0); }
+        }
+        @media (orientation: landscape) {
+            .container { transform: translateZ(0); }
         }
 
         .header {
@@ -335,6 +346,65 @@
             background: rgba(241, 196, 15, 0.2);
             border: 1px solid var(--color-warning);
             color: var(--color-warning);
+        }
+
+        /* Loading 動畫 */
+        .status.loading::before {
+            content: '';
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            margin-right: 8px;
+            border: 2px solid var(--color-warning);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* 新增紀錄高亮效果 */
+        .history-table tr.highlight-new {
+            animation: highlightFade 2s ease;
+        }
+
+        @keyframes highlightFade {
+            0%, 30% { background: rgba(46, 204, 113, 0.4); }
+            100% { background: transparent; }
+        }
+
+        /* 連線狀態指示燈 */
+        .connection-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-text-muted);
+        }
+
+        .connection-indicator.connected .connection-dot {
+            background: var(--color-success);
+            box-shadow: 0 0 6px var(--color-success);
+        }
+
+        .connection-indicator.disconnected .connection-dot {
+            background: var(--color-danger);
+        }
+
+        .connection-indicator.unknown .connection-dot {
+            background: var(--color-warning);
         }
 
         /* --------------------------------
@@ -1355,6 +1425,18 @@
             .container {
                 grid-template-columns: 1fr;
                 padding: 0 15px;
+                /* 用 flex 來控制順序 */
+                display: flex;
+                flex-direction: column;
+            }
+
+            /* 手機/平板：圖表區移到最上面 */
+            .right-panel {
+                order: -1;
+            }
+
+            .settings-panel {
+                order: 1;
             }
 
             .strategy-options {
@@ -1791,6 +1873,12 @@
             <span>🎂 <strong id="headerAge">--</strong> 歲</span>
             <span class="separator">│</span>
             <span>💰 <strong id="headerAsset">--</strong> 萬</span>
+            <span class="separator">│</span>
+            <!-- 連線狀態指示燈 -->
+            <span class="connection-indicator unknown" id="connectionIndicator" title="尚未驗證連線">
+                <span class="connection-dot"></span>
+                <span id="connectionText">未連線</span>
+            </span>
         </div>
         <!-- 用戶選擇器 -->
         <div class="user-selector-wrapper">
@@ -1815,7 +1903,7 @@
 
                  如需精確 IRR：需記錄每筆定期定額的投入日期
             -->
-            <div class="step step-quick">
+            <div class="step step-quick collapsed">
                 <div class="step-header" onclick="toggleStep(this)">
                     <div class="step-number">⚡</div>
                     <div class="step-title">快速記錄</div>
@@ -1904,7 +1992,7 @@
                  設定模擬參數：每月投入、預期報酬率、年齡等
                  「目前資產」由歷史紀錄自動帶入（唯讀）
             -->
-            <div class="step step-basic">
+            <div class="step step-basic collapsed">
                 <div class="step-header" onclick="toggleStep(this)">
                     <div class="step-number">1</div>
                     <div class="step-title">投資規劃</div>
@@ -2155,8 +2243,9 @@
 
                     <!-- 4% 法則 與 每月可花 -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <div style="background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 10px;">
-                            <div style="font-size: 12px; color: #2ecc71; font-weight: bold;">🛡️ 4% 法則</div>
+                        <div style="background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 10px; cursor: help;"
+                             title="4% 法則：&#10;退休時資產的 4% 可支撐一年開銷，&#10;假設投資報酬高於通膨，&#10;理論上可永續提領不花完。&#10;&#10;計算方式：年開銷 ÷ 4% = 所需資產">
+                            <div style="font-size: 12px; color: #2ecc71; font-weight: bold;">🛡️ 4% 法則 <span style="opacity: 0.6; font-weight: normal;">ⓘ</span></div>
                             <div style="font-size: 16px; color: #2ecc71; font-weight: bold; margin: 4px 0;" id="safeRuleStatus">--</div>
                             <div style="font-size: 12px; color: #2ecc71; opacity: 0.9;">
                                 目標 <span id="safeAssetDisplay">--</span>
@@ -2480,7 +2569,8 @@
             historicalIRR: 0,
             currentUser: CONFIG.DEFAULT_USER,
             cashflowChanged: false,  // 追蹤現金流是否有變更
-            connectionVerified: false  // 追蹤連線是否已驗證
+            connectionVerified: false,  // 追蹤連線是否已驗證
+            lastAddedDate: null  // 用於高亮新增的紀錄
         };
 
         /* --------------------------------
@@ -2749,9 +2839,14 @@
                     showStatus('✅ 已載入設定', 'success');
                 }
 
+                // ✅ 更新連線狀態
+                updateConnectionStatus('connected');
+
             } catch (error) {
                 console.error('Load from Sheet failed:', error.message);
                 showStatus('❌ 無法從 Sheet 載入：' + error.message, 'error');
+                // ❌ 更新連線狀態
+                updateConnectionStatus('disconnected', error.message);
             }
         }
 
@@ -2994,6 +3089,31 @@
             document.getElementById('headerAsset').textContent = asset ? asset.toFixed(0) : '--';
         }
 
+        // 更新連線狀態指示燈
+        function updateConnectionStatus(status, message = null) {
+            const indicator = document.getElementById('connectionIndicator');
+            const text = document.getElementById('connectionText');
+
+            indicator.className = 'connection-indicator ' + status;
+
+            switch (status) {
+                case 'connected':
+                    text.textContent = '已連線';
+                    indicator.title = '已成功連接 Google Sheet';
+                    state.connectionVerified = true;
+                    break;
+                case 'disconnected':
+                    text.textContent = '斷線';
+                    indicator.title = message || '無法連接到 Google Sheet';
+                    state.connectionVerified = false;
+                    break;
+                default:
+                    text.textContent = '未連線';
+                    indicator.title = '尚未驗證連線';
+                    state.connectionVerified = false;
+            }
+        }
+
         function getCurrentAge() {
             return Utils.getAge();
         }
@@ -3018,6 +3138,25 @@
             document.getElementById('annualRate').addEventListener('input', function() {
                 document.getElementById('rateDisplay').textContent = this.value + '%';
             });
+
+            // 螢幕旋轉時重繪圖表（修復佈局跑掉問題）
+            let resizeTimeout;
+            window.addEventListener('orientationchange', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    if (state.chart) {
+                        state.chart.resize();
+                        updateChart();
+                    }
+                }, 300);
+            });
+
+            // resize 事件也處理（桌面版視窗調整）
+            window.addEventListener('resize', Utils.debounce(() => {
+                if (state.chart) {
+                    state.chart.resize();
+                }
+            }, 200));
         }
 
         function updateAllCalculations() {
@@ -3402,6 +3541,12 @@
                 cachedValues = addSingleStrategyDataset(datasets, targetAge - currentAge, currentAgeOffset);
             }
 
+            // 如果啟用退休規劃，加入退休後消耗曲線
+            const enableRetire = document.getElementById('enableRetirement')?.checked;
+            if (enableRetire && cachedValues) {
+                addRetirementDrawdown(datasets, cachedValues, startAge, totalYears, currentAgeOffset);
+            }
+
             state.chart.data.labels = labels;
             state.chart.data.datasets = datasets;
             state.chart.update();
@@ -3459,6 +3604,8 @@
         function addCompareDatasets(datasets, years, offset = 0) {
             const strategies = ['none', 'buy', 'rent', 'mixed'];
             const checkboxIds = ['compareNone', 'compareBuy', 'compareRent', 'compareMixed'];
+            // 不同策略使用不同虛線樣式，方便區分
+            const dashPatterns = [[5, 5], [10, 5], [2, 3], [10, 3, 2, 3]];
 
             strategies.forEach((strategy, i) => {
                 if (document.getElementById(checkboxIds[i])?.checked) {
@@ -3470,8 +3617,10 @@
                         label: name,
                         data: paddedData,
                         borderColor: color,
-                        borderWidth: 2,
-                        pointRadius: 2,
+                        borderWidth: 2.5,
+                        borderDash: dashPatterns[i],  // 虛線樣式（便於區分）
+                        pointRadius: 3,
+                        pointStyle: ['circle', 'rect', 'triangle', 'rectRot'][i],  // 不同點樣式
                         fill: false
                     });
                 }
@@ -3490,13 +3639,63 @@
                 label: name + ' 預測',
                 data: paddedData,
                 borderColor: color,
-                backgroundColor: color + '20',
+                backgroundColor: color + '15',
                 borderWidth: 3,
-                pointRadius: 2,
+                borderDash: [8, 4],  // 虛線表示「預測」
+                pointRadius: 3,
                 fill: true
             });
 
             return values; // 回傳供 updateStats 使用
+        }
+
+        // 退休後消耗曲線
+        // 從退休年齡開始，模擬每年提領開銷後的資產變化
+        function addRetirementDrawdown(datasets, projectedValues, startAge, totalYears, offset) {
+            const retireAge = Utils.getInputValue('retireAge', 55);
+            const lifeExpectancy = Utils.getInputValue('lifeExpectancy', 85);
+            const currentExpense = Utils.getInputValue('currentExpense', 3);
+            const inflation = Utils.getInputValue('expenseInflation') / 100;
+            const currentAge = getCurrentAge();
+
+            // 找出退休時的資產
+            const retireData = projectedValues.find(v => v.age === retireAge);
+            if (!retireData) return;
+
+            let asset = retireData.asset;
+            const yearsToRetire = retireAge - currentAge;
+
+            // 退休時的月開銷（考慮通膨）
+            const retireMonthlyExpense = Calculator.futureValue(currentExpense, inflation, yearsToRetire);
+
+            // 計算退休後每年的資產變化
+            const drawdownData = new Array(totalYears + 1).fill(null);
+            const retireAgeIndex = retireAge - startAge;
+
+            for (let i = 0; i <= lifeExpectancy - retireAge && retireAgeIndex + i <= totalYears; i++) {
+                // 退休後的年度開銷（持續通膨）
+                const yearExpense = retireMonthlyExpense * 12 * Math.pow(1 + inflation, i);
+
+                if (i === 0) {
+                    drawdownData[retireAgeIndex] = asset;
+                } else {
+                    // 假設退休後資產有 4% 投資報酬（保守估計）
+                    asset = asset * 1.04 - yearExpense;
+                    drawdownData[retireAgeIndex + i] = Math.max(0, asset);
+                }
+            }
+
+            datasets.push({
+                label: '🔻 退休後消耗',
+                data: drawdownData,
+                borderColor: CONFIG.COLORS.warning,
+                backgroundColor: CONFIG.COLORS.warning + '20',
+                borderWidth: 2,
+                borderDash: [3, 3],  // 短虛線
+                pointRadius: 2,
+                fill: true,
+                spanGaps: false
+            });
         }
 
         /* --------------------------------
@@ -4013,6 +4212,13 @@
             document.getElementById('currentValue').value = currentAsset.toFixed(0);
             updateHeaderAsset(currentAsset);
 
+            // ✨ 自動帶入上次本金到快速記錄（方便用戶）
+            const quickCostInput = document.getElementById('quickRecordCost');
+            if (quickCostInput && !quickCostInput.value) {
+                // 只有在用戶尚未輸入時才自動帶入
+                quickCostInput.value = totalCost.toFixed(1);
+            }
+
             document.getElementById('historySummary').classList.add('active');
 
             // 渲染歷史紀錄列表
@@ -4056,8 +4262,12 @@
                     ? `<span title="${record.note}">${record.note}</span>`
                     : '<span style="color: var(--color-text-muted);">-</span>';
 
+                // ✨ 新增紀錄高亮效果
+                const isNewRecord = state.lastAddedDate === dateStr;
+                const highlightClass = isNewRecord ? 'highlight-new' : '';
+
                 return `
-                    <tr>
+                    <tr class="${highlightClass}">
                         <td>${dateStr}</td>
                         <td>${record.cost.toFixed(1)}</td>
                         <td>${record.asset.toFixed(1)}</td>
@@ -4419,13 +4629,21 @@
             const success = await syncAllToSheet('正在同步...');
 
             if (success) {
+                // ✨ 設定高亮標記（讓新紀錄閃爍）
+                state.lastAddedDate = date;
+
                 // 更新 UI
                 onHistoryDataLoaded();
                 saveAllData();
 
+                // 2 秒後清除高亮標記
+                setTimeout(() => {
+                    state.lastAddedDate = null;
+                }, 2500);
+
                 showStatus(`✅ 已記錄 ${date} 的收益並同步到「${getUserSheetName()}」`, 'success');
 
-                // 清空輸入
+                // 清空輸入（但本金會在下次載入時自動帶入）
                 document.getElementById('quickRecordCost').value = '';
                 document.getElementById('quickRecordAsset').value = '';
                 document.getElementById('quickRecordNote').value = '';
@@ -4523,10 +4741,14 @@
                     body: JSON.stringify(data)
                 });
 
+                // ✅ 同步成功，更新連線狀態
+                updateConnectionStatus('connected');
                 return true;
             } catch (error) {
                 console.error('Sync error:', error);
                 showStatus('同步失敗：' + error.message, 'error');
+                // ❌ 同步失敗，更新連線狀態
+                updateConnectionStatus('disconnected', error.message);
                 return false;
             }
         }
@@ -4588,10 +4810,31 @@
             }
         }
 
+        // 狀態訊息計時器
+        let statusTimer = null;
+
         function showStatus(message, type) {
             const el = document.getElementById('status');
             el.textContent = message;
             el.className = 'status ' + type;
+
+            // 清除之前的計時器
+            if (statusTimer) {
+                clearTimeout(statusTimer);
+                statusTimer = null;
+            }
+
+            // 成功訊息 5 秒後自動隱藏，loading 不隱藏
+            if (type === 'success') {
+                statusTimer = setTimeout(() => {
+                    el.className = 'status';
+                }, 5000);
+            } else if (type === 'warning' || type === 'error') {
+                // 警告和錯誤 8 秒後隱藏
+                statusTimer = setTimeout(() => {
+                    el.className = 'status';
+                }, 8000);
+            }
         }
     </script>
 </body>
