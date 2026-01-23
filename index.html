@@ -3638,7 +3638,7 @@
 
             if (historyCostData.some(v => v !== null)) {
                 datasets.push({
-                    label: '📉 歷史成本',
+                    label: '💰 成本',
                     data: historyCostData,
                     borderColor: CONFIG.COLORS.muted,
                     backgroundColor: CONFIG.COLORS.muted + '1a',
@@ -3651,7 +3651,7 @@
 
             if (historyAssetData.some(v => v !== null)) {
                 datasets.push({
-                    label: '📈 歷史資產',
+                    label: '📊 資產',
                     data: historyAssetData,
                     borderColor: CONFIG.COLORS.purple,
                     backgroundColor: CONFIG.COLORS.purple + '1a',
@@ -3698,7 +3698,7 @@
             // 在預測線前面填充 null，對齊歷史資料
             const paddedData = new Array(offset).fill(null).concat(values.map(v => v.asset));
             datasets.push({
-                label: name + ' 預測',
+                label: '🔮 預測',
                 data: paddedData,
                 borderColor: color,
                 backgroundColor: color + '20',
@@ -3713,7 +3713,7 @@
             const conservativeValues = calculateAssets(state.currentStrategy, years, conservativeRate);
             const conservativeData = new Array(offset).fill(null).concat(conservativeValues.map(v => v.asset));
             datasets.push({
-                label: `保守 ${conservativeRate}%`,
+                label: `🛡️ 保守 ${conservativeRate}%`,
                 data: conservativeData,
                 borderColor: CONFIG.COLORS.muted,
                 borderWidth: 1.5,
@@ -3762,7 +3762,7 @@
             }
 
             datasets.push({
-                label: '🔻 退休後消耗',
+                label: '📉 消耗',
                 data: drawdownData,
                 borderColor: CONFIG.COLORS.warning,
                 backgroundColor: CONFIG.COLORS.warning + '20',
