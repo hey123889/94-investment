@@ -3680,6 +3680,7 @@
                         data: paddedData,
                         borderColor: color,
                         borderWidth: 2,
+                        borderDash: [6, 3],  // 預測用虛線
                         pointRadius: 2,
                         fill: false
                     });
@@ -3701,6 +3702,7 @@
                 borderColor: color,
                 backgroundColor: color + '20',
                 borderWidth: 3,
+                borderDash: [6, 3],  // 預測用虛線
                 pointRadius: 2,
                 fill: true
             });
@@ -3750,6 +3752,7 @@
                 borderColor: CONFIG.COLORS.warning,
                 backgroundColor: CONFIG.COLORS.warning + '20',
                 borderWidth: 2,
+                borderDash: [4, 4],  // 消耗用短虛線（與預測線區分）
                 pointRadius: 2,
                 fill: true,
                 spanGaps: false
