@@ -3640,8 +3640,6 @@
         function addCompareDatasets(datasets, years, offset = 0) {
             const strategies = ['none', 'buy', 'rent', 'mixed'];
             const checkboxIds = ['compareNone', 'compareBuy', 'compareRent', 'compareMixed'];
-            // 不同策略使用不同虛線樣式，方便區分
-            const dashPatterns = [[5, 5], [10, 5], [2, 3], [10, 3, 2, 3]];
 
             strategies.forEach((strategy, i) => {
                 if (document.getElementById(checkboxIds[i])?.checked) {
@@ -3653,10 +3651,8 @@
                         label: name,
                         data: paddedData,
                         borderColor: color,
-                        borderWidth: 2.5,
-                        borderDash: dashPatterns[i],  // 虛線樣式（便於區分）
-                        pointRadius: 3,
-                        pointStyle: ['circle', 'rect', 'triangle', 'rectRot'][i],  // 不同點樣式
+                        borderWidth: 2,
+                        pointRadius: 2,
                         fill: false
                     });
                 }
@@ -3675,10 +3671,9 @@
                 label: name + ' 預測',
                 data: paddedData,
                 borderColor: color,
-                backgroundColor: color + '15',
+                backgroundColor: color + '20',
                 borderWidth: 3,
-                borderDash: [8, 4],  // 虛線表示「預測」
-                pointRadius: 3,
+                pointRadius: 2,
                 fill: true
             });
 
@@ -3727,7 +3722,6 @@
                 borderColor: CONFIG.COLORS.warning,
                 backgroundColor: CONFIG.COLORS.warning + '20',
                 borderWidth: 2,
-                borderDash: [3, 3],  // 短虛線
                 pointRadius: 2,
                 fill: true,
                 spanGaps: false
