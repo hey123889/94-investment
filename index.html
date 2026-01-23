@@ -3681,8 +3681,7 @@
                         data: paddedData,
                         borderColor: color,
                         borderWidth: 2,
-                        borderDash: [6, 3],  // 預測用虛線
-                        pointRadius: 2,
+                        pointRadius: 0,
                         fill: false
                     });
                 }
@@ -3703,7 +3702,6 @@
                 borderColor: color,
                 backgroundColor: color + '20',
                 borderWidth: 3,
-                borderDash: [6, 3],  // 預測用虛線
                 pointRadius: 2,
                 fill: true
             });
@@ -3716,8 +3714,8 @@
                 label: `🛡️ 保守 ${conservativeRate}%`,
                 data: conservativeData,
                 borderColor: CONFIG.COLORS.muted,
-                borderWidth: 1.5,
-                borderDash: [4, 4],
+                borderWidth: 1,
+                borderDash: [5, 5],
                 pointRadius: 0,
                 fill: false
             });
@@ -3767,8 +3765,8 @@
                 borderColor: CONFIG.COLORS.warning,
                 backgroundColor: CONFIG.COLORS.warning + '20',
                 borderWidth: 2,
-                borderDash: [4, 4],  // 消耗用短虛線（與預測線區分）
-                pointRadius: 2,
+                borderDash: [10, 5],  // 長虛線
+                pointRadius: 0,
                 fill: true,
                 spanGaps: false
             });
