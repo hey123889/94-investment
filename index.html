@@ -3157,16 +3157,23 @@
         // ========== 自動更新設定 ==========
         function setupAutoUpdate() {
             const debouncedUpdate = Utils.debounce(updateAllCalculations, 300);
-            const debouncedSave = Utils.debounce(saveAllData, 1000);  // 1 秒後自動儲存
+            const debouncedSave = Utils.debounce(saveAllData, 1000);  // 1 秒後自動儲存到 localStorage
 
             document.querySelectorAll('input').forEach(input => {
+                // 排除不需要同步的輸入（如快速記錄、連線設定）
+                const skipSync = input.closest('.step-quick') ||
+                                 input.id === 'sheetId' ||
+                                 input.id === 'appsScriptUrl';
+
                 input.addEventListener('change', () => {
                     debouncedUpdate();
                     debouncedSave();
+                    if (!skipSync) scheduleAutoSync();  // ★ 設定變更時觸發同步
                 });
                 input.addEventListener('input', () => {
                     debouncedUpdate();
                     debouncedSave();
+                    // input 事件不觸發同步（避免每次按鍵都同步）
                 });
             });
 
@@ -3225,6 +3232,7 @@
          *   - 買房甜蜜點（等效投資本金）
          * -------------------------------- */
         function selectStrategy(strategy) {
+            const changed = state.currentStrategy !== strategy;
             state.currentStrategy = strategy;
 
             // 更新選中狀態
@@ -3242,6 +3250,26 @@
             }
 
             updateAllCalculations();
+
+            // ★ 策略變更時自動同步到 Sheet（5 秒後）
+            if (changed) {
+                saveAllData();
+                scheduleAutoSync();
+            }
+        }
+
+        // 排程自動同步（可在多處呼叫，會自動 debounce）
+        let autoSyncTimer = null;
+        function scheduleAutoSync() {
+            clearTimeout(autoSyncTimer);
+            autoSyncTimer = setTimeout(async () => {
+                const url = document.getElementById('appsScriptUrl').value.trim();
+                const sheetId = document.getElementById('sheetId').value.trim();
+                if (url && sheetId && state.connectionVerified) {
+                    console.log('自動同步設定到 Sheet...');
+                    await syncAllToSheet('自動同步中...');
+                }
+            }, 5000);
         }
 
         // ========== 比較模式 ==========
