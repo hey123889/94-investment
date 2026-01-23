@@ -3418,10 +3418,11 @@
         }
 
         // ========== 資產計算 ==========
-        function calculateAssets(strategy, years) {
+        // overrideRate: 可選參數，覆蓋 UI 設定的報酬率（用於保守對照線）
+        function calculateAssets(strategy, years, overrideRate = null) {
             const currentValue = Utils.getInputValue('currentValue');
             const monthlyContribution = Utils.getInputValue('monthlyContribution');
-            const annualRate = Utils.getInputValue('annualRate') / 100;
+            const annualRate = overrideRate !== null ? overrideRate / 100 : Utils.getInputValue('annualRate') / 100;
             const currentAge = getCurrentAge();
 
             // 預先取得策略配置，避免重複讀取 DOM
@@ -3705,6 +3706,20 @@
                 borderDash: [6, 3],  // 預測用虛線
                 pointRadius: 2,
                 fill: true
+            });
+
+            // 保守對照線（5% 報酬率）
+            const conservativeRate = 5;
+            const conservativeValues = calculateAssets(state.currentStrategy, years, conservativeRate);
+            const conservativeData = new Array(offset).fill(null).concat(conservativeValues.map(v => v.asset));
+            datasets.push({
+                label: `保守 ${conservativeRate}%`,
+                data: conservativeData,
+                borderColor: CONFIG.COLORS.muted,
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                pointRadius: 0,
+                fill: false
             });
 
             return values; // 回傳供 updateStats 使用
