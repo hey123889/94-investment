@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-  投資規劃與績效追蹤器 v3.2
-  更新日期：2026-01-22
+  投資規劃與績效追蹤器 v3.4
+  更新日期：2026-02-10
+
+  v3.4 更新：
+  - 新增 Apps Script URL 透過網址參數傳入 (gas=)
+  - 快速記錄自動展開（當天未記錄時）
+  - 顯示「距上次記錄 X 天」提示
+  - 資產欄位按 Enter 直接送出快速記錄
+  - 記錄後保留本金欄位（不再清空）
+  - URL 參數提供 gas 時自動信任連線
 
   v3.2 更新：
   - 簡化「歷史回顧」：移除近期/長期績效計算（需要密集資料才有意義）
@@ -25,7 +33,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>投資規劃與績效追蹤器 v3.2</title>
+    <title>投資規劃與績效追蹤器 v3.4</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -1936,6 +1944,7 @@
                     <div class="step-toggle">▼</div>
                 </div>
                 <div class="step-content">
+                    <div id="lastRecordInfo" style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 10px; display: none;"></div>
                     <div class="form-grid">
                         <div class="form-group">
                             <label>日期</label>
@@ -2798,6 +2807,7 @@
             if (gasParam) {
                 Utils.setInputValue('appsScriptUrl', gasParam);
                 localStorage.setItem('appsScriptUrl', gasParam);
+                state.connectionVerified = true;
             }
 
             // 用戶選擇（支援別名：me → hey）
@@ -2874,6 +2884,7 @@
                 if (summary.length > 0) {
                     showStatus(`✅ 已從 Sheet 載入：${summary.join('、')}`, 'success');
                     onHistoryDataLoaded();
+                    autoExpandQuickRecord();
                 } else {
                     showStatus('✅ 已載入設定', 'success');
                 }
@@ -2889,12 +2900,49 @@
             }
         }
 
-        // 已移除合併邏輯（不再需要，因為 Sheet 是唯一資料來源）
-        // mergeHistoryData 和 mergeEventsData 函數已刪除
+        // Auto-expand Quick Record when data loaded and no today's record
+        function autoExpandQuickRecord() {
+            updateLastRecordInfo();
+            if (state.historyData.length === 0) return;
 
-        // 保留空函數以防舊程式碼呼叫
-        function mergeHistoryData(local, sheet) {
-            return sheet; // 直接返回 Sheet 資料
+            const today = new Date().toISOString().split('T')[0];
+            const hasToday = state.historyData.some(
+                h => h.date.toISOString().split('T')[0] === today
+            );
+
+            if (!hasToday) {
+                const quickStep = document.querySelector('.step-quick');
+                if (quickStep) quickStep.classList.remove('collapsed');
+            }
+        }
+
+        // Show days since last record in Quick Record section
+        function updateLastRecordInfo() {
+            const el = document.getElementById('lastRecordInfo');
+            if (!el) return;
+
+            if (state.historyData.length === 0) {
+                el.style.display = 'none';
+                return;
+            }
+
+            const last = state.historyData[state.historyData.length - 1];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const lastDate = new Date(last.date);
+            lastDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.round((today - lastDate) / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 0) {
+                el.innerHTML = '<span style="color: var(--color-success);">✅ 今天已記錄</span>';
+            } else if (diffDays <= 7) {
+                const dateStr = last.date.toISOString().split('T')[0];
+                el.textContent = `上次記錄：${diffDays} 天前 (${dateStr})`;
+            } else {
+                const dateStr = last.date.toISOString().split('T')[0];
+                el.innerHTML = `<span style="color: var(--color-warning);">⚠️ 距上次記錄 ${diffDays} 天 (${dateStr})</span>`;
+            }
+            el.style.display = 'block';
         }
 
         // 初始化用戶選擇器
@@ -3106,6 +3154,14 @@
             // 輸入時計算報酬
             ['quickRecordCost', 'quickRecordAsset'].forEach(id => {
                 document.getElementById(id).addEventListener('input', updateQuickRecordResult);
+            });
+
+            // Enter key shortcut: asset field → submit
+            document.getElementById('quickRecordAsset').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    quickRecordAndSync();
+                }
             });
         }
 
@@ -4753,11 +4809,11 @@
 
                 showStatus(`✅ 已記錄 ${date} 的收益並同步到「${getUserSheetName()}」`, 'success');
 
-                // 清空輸入（但本金會在下次載入時自動帶入）
-                document.getElementById('quickRecordCost').value = '';
+                // 清空資產和備註，保留本金（方便下次記錄）
                 document.getElementById('quickRecordAsset').value = '';
                 document.getElementById('quickRecordNote').value = '';
                 document.getElementById('quickRecordResult').classList.remove('active');
+                updateLastRecordInfo();
             }
         }
 
