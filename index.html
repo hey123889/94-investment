@@ -28,6 +28,7 @@
     <title>投資規劃與績效追蹤器 v3.2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
         /* ================================================================
          * CSS 樣式區塊
          * ================================================================
@@ -45,28 +46,30 @@
          *   10. 里程碑 (.milestones)      - 目標達成列表
          *   11. 響應式設計 (@media)       - 手機版適配
          *
-         * 顏色系統：
-         *   --color-primary: #00d4ff (青色，主色)
-         *   --color-success: #2ecc71 (綠色，正向)
-         *   --color-warning: #f39c12 (橙色，警告)
-         *   --color-danger:  #e74c3c (紅色，危險)
+         * 顏色系統（Tailwind Slate）：
+         *   --color-primary: #38BDF8 (青色，主色)
+         *   --color-success: #22C55E (綠色，正向)
+         *   --color-warning: #F59E0B (橙色，警告)
+         *   --color-danger:  #EF4444 (紅色，危險)
          * ================================================================ */
 
         /* --------------------------------
          * 1. CSS 變數
          * -------------------------------- */
         :root {
-            --color-bg: #1a1a2e;
-            --color-bg-light: #16213e;
-            --color-primary: #00d4ff;
-            --color-text: #eee;
-            --color-text-muted: #888;
-            --color-success: #2ecc71;
-            --color-warning: #f39c12;
-            --color-danger: #e74c3c;
-            --color-purple: #9b59b6;
-            --color-orange: #e67e22;
-            --color-blue: #3498db;
+            --color-bg: #0F172A;
+            --color-bg-light: #1E293B;
+            --color-surface: #334155;
+            --color-primary: #38BDF8;
+            --color-primary-glow: rgba(56, 189, 248, 0.35);
+            --color-text: #F1F5F9;
+            --color-text-muted: #94A3B8;
+            --color-success: #22C55E;
+            --color-warning: #F59E0B;
+            --color-danger: #EF4444;
+            --color-purple: #A78BFA;
+            --color-orange: #FB923C;
+            --color-blue: #60A5FA;
             --radius: 12px;
             --shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
@@ -76,7 +79,7 @@
          * -------------------------------- */
         * {
             box-sizing: border-box;
-            font-family: 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+            font-family: 'IBM Plex Sans', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
         }
 
         body {
@@ -109,7 +112,7 @@
 
         .header h1 {
             color: var(--color-primary);
-            text-shadow: 0 0 20px rgba(0,212,255,0.5);
+            text-shadow: 0 0 24px var(--color-primary-glow);
             margin: 0;
             font-size: 2em;
         }
@@ -117,14 +120,14 @@
         .header .subtitle {
             color: var(--color-text-muted);
             font-size: 0.9em;
-            margin-top: 5px;
+            margin-top: 4px;
         }
 
         .user-info-summary {
             margin-top: 12px;
             padding: 8px 16px;
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid rgba(0, 212, 255, 0.3);
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
             border-radius: 20px;
             display: inline-flex;
             gap: 8px;
@@ -155,9 +158,14 @@
         .step {
             background: rgba(255,255,255,0.08);
             border-radius: var(--radius);
-            margin-bottom: 15px;
+            margin-bottom: 16px;
             overflow: hidden;
             border: 1px solid rgba(255,255,255,0.1);
+            transition: border-color 0.2s;
+        }
+
+        .step:hover {
+            border-color: rgba(255,255,255,0.2);
         }
 
         .step-header {
@@ -201,7 +209,7 @@
         }
 
         .step-content {
-            padding: 5px 18px 18px 18px;
+            padding: 4px 16px 16px 16px;
             transition: all 0.3s;
         }
 
@@ -252,12 +260,14 @@
             background: rgba(0,0,0,0.3);
             color: var(--color-text);
             font-size: 15px;
+            font-variant-numeric: tabular-nums;
             transition: border-color 0.2s;
         }
 
         .form-group input:focus, .form-group select:focus {
             outline: none;
             border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-glow);
         }
 
         .form-hint {
@@ -289,7 +299,7 @@
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.4);
+            box-shadow: 0 4px 15px var(--color-primary-glow);
         }
 
         .btn-secondary {
@@ -303,13 +313,13 @@
         }
 
         .btn-danger {
-            background: rgba(231, 76, 60, 0.2);
+            background: rgba(239, 68, 68, 0.2);
             color: var(--color-danger);
             border: 1px solid var(--color-danger);
         }
 
         .btn-danger:hover {
-            background: rgba(231, 76, 60, 0.3);
+            background: rgba(239, 68, 68, 0.3);
         }
 
         /* --------------------------------
@@ -329,21 +339,21 @@
 
         .status.success {
             display: block;
-            background: rgba(46, 204, 113, 0.2);
+            background: rgba(34, 197, 94, 0.2);
             border: 1px solid var(--color-success);
             color: var(--color-success);
         }
 
         .status.error {
             display: block;
-            background: rgba(231, 76, 60, 0.2);
+            background: rgba(239, 68, 68, 0.2);
             border: 1px solid var(--color-danger);
             color: var(--color-danger);
         }
 
         .status.loading {
             display: block;
-            background: rgba(241, 196, 15, 0.2);
+            background: rgba(245, 158, 11, 0.2);
             border: 1px solid var(--color-warning);
             color: var(--color-warning);
         }
@@ -372,7 +382,7 @@
         }
 
         @keyframes highlightFade {
-            0%, 30% { background: rgba(46, 204, 113, 0.4); }
+            0%, 30% { background: rgba(34, 197, 94, 0.4); }
             100% { background: transparent; }
         }
 
@@ -396,7 +406,7 @@
 
         .connection-indicator.connected .connection-dot {
             background: var(--color-success);
-            box-shadow: 0 0 6px var(--color-success);
+            box-shadow: 0 0 8px var(--color-success), 0 0 16px rgba(34, 197, 94, 0.3);
         }
 
         .connection-indicator.disconnected .connection-dot {
@@ -437,7 +447,7 @@
          * 包含歷史紀錄列表
          * -------------------------------- */
         .history-summary {
-            background: rgba(155, 89, 182, 0.15);
+            background: rgba(167, 139, 250, 0.15);
             border: 1px solid var(--color-purple);
             border-radius: 10px;
             padding: 12px;
@@ -478,6 +488,7 @@
             font-size: 18px;
             font-weight: bold;
             color: var(--color-primary);
+            font-variant-numeric: tabular-nums;
         }
 
         .history-summary .stat-value.irr {
@@ -501,7 +512,7 @@
         }
 
         .overview-item .label {
-            font-size: 11px;
+            font-size: 12px;
             color: var(--color-text-muted);
             display: block;
         }
@@ -510,6 +521,7 @@
             font-size: 16px;
             font-weight: bold;
             color: var(--color-text);
+            font-variant-numeric: tabular-nums;
         }
 
         .overview-item .value.highlight {
@@ -572,6 +584,7 @@
             width: 100%;
             font-size: 12px;
             border-collapse: collapse;
+            font-variant-numeric: tabular-nums;
         }
 
         .history-table th,
@@ -622,7 +635,7 @@
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 8px;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
 
         .strategy-option {
@@ -641,7 +654,7 @@
 
         .strategy-option.selected {
             border-color: var(--color-success);
-            background: rgba(46, 204, 113, 0.15);
+            background: rgba(34, 197, 94, 0.15);
         }
 
         .strategy-option .icon {
@@ -702,9 +715,9 @@
 
         /* 比較模式 */
         .compare-mode {
-            margin-top: 15px;
+            margin-top: 16px;
             padding: 12px;
-            background: rgba(241, 196, 15, 0.1);
+            background: rgba(245, 158, 11, 0.1);
             border: 1px solid var(--color-warning);
             border-radius: 10px;
         }
@@ -834,6 +847,7 @@
             font-size: 18px;
             color: var(--color-warning);
             font-weight: bold;
+            font-variant-numeric: tabular-nums;
         }
 
         /* --------------------------------
@@ -913,7 +927,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
 
         .type-btn {
@@ -933,13 +947,13 @@
 
         .type-btn.active[data-type="income"] {
             border-color: var(--color-success);
-            background: rgba(46, 204, 113, 0.15);
+            background: rgba(34, 197, 94, 0.15);
             color: var(--color-success);
         }
 
         .type-btn.active[data-type="expense"] {
             border-color: var(--color-danger);
-            background: rgba(231, 76, 60, 0.15);
+            background: rgba(239, 68, 68, 0.15);
             color: var(--color-danger);
         }
 
@@ -996,7 +1010,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
 
         .export-modal-header h3 {
@@ -1041,7 +1055,7 @@
 
         .export-tab.active {
             border-color: var(--color-primary);
-            background: rgba(0, 212, 255, 0.15);
+            background: rgba(56, 189, 248, 0.15);
             color: var(--color-primary);
         }
 
@@ -1082,10 +1096,10 @@
          *   - 不需精確績效計算的情況
          * -------------------------------- */
         .quick-record-section {
-            background: rgba(46, 204, 113, 0.08);
-            border: 1px solid rgba(46, 204, 113, 0.3);
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.3);
             border-radius: 10px;
-            padding: 14px;
+            padding: 16px;
         }
 
         .quick-record-section .section-title {
@@ -1139,7 +1153,7 @@
         .user-selector-wrapper {
             display: flex;
             justify-content: center;
-            margin-top: 15px;
+            margin-top: 16px;
         }
 
         .user-selector {
@@ -1165,8 +1179,8 @@
 
         .user-option.selected {
             border-color: var(--color-primary);
-            background: rgba(0, 212, 255, 0.2);
-            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+            background: rgba(56, 189, 248, 0.2);
+            box-shadow: 0 0 10px var(--color-primary-glow);
         }
 
         .user-option .user-name {
@@ -1179,7 +1193,7 @@
         }
 
         .user-option .user-info {
-            font-size: 10px;
+            font-size: 12px;
             color: var(--color-text-muted);
             margin-top: 2px;
         }
@@ -1204,8 +1218,8 @@
 
         .user-delete {
             position: absolute;
-            top: -5px;
-            right: -5px;
+            top: -4px;
+            right: -4px;
             width: 18px;
             height: 18px;
             background: var(--color-danger);
@@ -1224,7 +1238,7 @@
         }
 
         .user-delete:hover {
-            background: #c0392b;
+            background: #DC2626;
             transform: scale(1.1);
         }
 
@@ -1257,6 +1271,7 @@
 
         .tool-btn:hover {
             background: rgba(255,255,255,0.15);
+            border-color: var(--color-primary);
         }
 
         .tool-result {
@@ -1289,10 +1304,15 @@
             border-radius: var(--radius);
             padding: 20px;
             border: 1px solid rgba(255,255,255,0.1);
+            transition: border-color 0.2s;
+        }
+
+        .chart-panel:hover {
+            border-color: rgba(255,255,255,0.2);
         }
 
         .chart-panel h2 {
-            margin: 0 0 15px 0;
+            margin: 0 0 16px 0;
             color: var(--color-primary);
             font-size: 1.4em;
         }
@@ -1308,11 +1328,16 @@
             border-radius: var(--radius);
             padding: 20px;
             border: 1px solid rgba(255,255,255,0.1);
+            transition: border-color 0.2s;
+        }
+
+        .stats-panel:hover {
+            border-color: rgba(255,255,255,0.2);
         }
 
         .stats-panel h3 {
             color: var(--color-primary);
-            margin: 0 0 15px 0;
+            margin: 0 0 16px 0;
             font-size: 1.2em;
         }
 
@@ -1324,7 +1349,7 @@
 
         .stat-item {
             text-align: center;
-            padding: 14px 10px;
+            padding: 16px 12px;
             background: rgba(0,0,0,0.3);
             border-radius: 10px;
             transition: transform 0.2s;
@@ -1344,6 +1369,7 @@
             font-size: 18px;
             font-weight: bold;
             color: var(--color-primary);
+            font-variant-numeric: tabular-nums;
         }
 
         .stat-item .info {
@@ -1354,8 +1380,8 @@
 
         /* 里程碑樣式 */
         .stat-item.milestone-achieved {
-            background: rgba(46, 204, 113, 0.15);
-            border: 1px solid rgba(46, 204, 113, 0.4);
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.4);
         }
 
         .stat-item.milestone-achieved .value {
@@ -1373,13 +1399,13 @@
 
         /* 關鍵年齡樣式 */
         .stat-item.age-item {
-            background: rgba(0, 212, 255, 0.1);
-            border: 1px solid rgba(0, 212, 255, 0.3);
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
         }
 
         .stat-item.highlight-retire {
-            background: rgba(230, 126, 34, 0.15);
-            border: 1px solid rgba(230, 126, 34, 0.5);
+            background: rgba(251, 146, 60, 0.15);
+            border: 1px solid rgba(251, 146, 60, 0.5);
         }
 
         .stat-item.highlight-retire .label {
@@ -1390,7 +1416,7 @@
         .stats-divider {
             grid-column: 1 / -1;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 5px 0;
+            margin: 4px 0;
         }
 
         /* 分析區塊 */
@@ -1401,10 +1427,10 @@
             font-size: 12px;
         }
 
-        .analysis-box.buy { background: rgba(46, 204, 113, 0.15); border: 1px solid var(--color-success); }
-        .analysis-box.rent { background: rgba(155, 89, 182, 0.15); border: 1px solid var(--color-purple); }
-        .analysis-box.compare { background: rgba(241, 196, 15, 0.15); border: 1px solid var(--color-warning); }
-        .analysis-box.retire { background: rgba(230, 126, 34, 0.15); border: 1px solid var(--color-orange); }
+        .analysis-box.buy { background: rgba(34, 197, 94, 0.15); border: 1px solid var(--color-success); }
+        .analysis-box.rent { background: rgba(167, 139, 250, 0.15); border: 1px solid var(--color-purple); }
+        .analysis-box.compare { background: rgba(245, 158, 11, 0.15); border: 1px solid var(--color-warning); }
+        .analysis-box.retire { background: rgba(251, 146, 60, 0.15); border: 1px solid var(--color-orange); }
 
         .analysis-box h4 {
             margin: 0 0 8px 0;
@@ -1741,12 +1767,12 @@
 
             /* 隱藏不重要的文字 */
             .form-hint {
-                font-size: 11px;
+                font-size: 12px;
             }
 
             /* 歷史紀錄表格 */
             .history-table {
-                font-size: 11px;
+                font-size: 12px;
             }
 
             .history-table th,
@@ -1821,7 +1847,7 @@
 
         /* 基本資料顯示 */
         .info-display {
-            background: rgba(0, 212, 255, 0.1);
+            background: rgba(56, 189, 248, 0.1);
             border: 1px solid var(--color-primary);
             border-radius: 8px;
             padding: 8px 12px;
@@ -2231,7 +2257,7 @@
                     </div>
 
                     <!-- 退休時預估資產（主要顯示） -->
-                    <div style="background: rgba(0, 212, 255, 0.15); border: 1px solid var(--color-primary); border-radius: 10px; padding: 12px; margin-bottom: 10px; text-align: center;">
+                    <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid var(--color-primary); border-radius: 10px; padding: 12px; margin-bottom: 10px; text-align: center;">
                         <div style="font-size: 12px; color: var(--color-text-muted);">
                             退休時預估資產（<span id="retireAgeDisplay2">55</span> 歲）
                         </div>
@@ -2243,20 +2269,20 @@
 
                     <!-- 4% 法則 與 每月可花 -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <div style="background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-radius: 8px; padding: 10px; cursor: help;"
+                        <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid #22C55E; border-radius: 8px; padding: 10px; cursor: help;"
                              title="4% 法則：&#10;退休時資產的 4% 可支撐一年開銷，&#10;假設投資報酬高於通膨，&#10;理論上可永續提領不花完。&#10;&#10;計算方式：年開銷 ÷ 4% = 所需資產">
-                            <div style="font-size: 12px; color: #2ecc71; font-weight: bold;">🛡️ 4% 法則 <span style="opacity: 0.6; font-weight: normal;">ⓘ</span></div>
-                            <div style="font-size: 16px; color: #2ecc71; font-weight: bold; margin: 4px 0;" id="safeRuleStatus">--</div>
-                            <div style="font-size: 12px; color: #2ecc71; opacity: 0.9;">
+                            <div style="font-size: 12px; color: #22C55E; font-weight: bold;">🛡️ 4% 法則 <span style="opacity: 0.6; font-weight: normal;">ⓘ</span></div>
+                            <div style="font-size: 16px; color: #22C55E; font-weight: bold; margin: 4px 0;" id="safeRuleStatus">--</div>
+                            <div style="font-size: 12px; color: #22C55E; opacity: 0.9;">
                                 目標 <span id="safeAssetDisplay">--</span>
                             </div>
                         </div>
-                        <div style="background: rgba(241, 196, 15, 0.15); border: 1px solid #f39c12; border-radius: 8px; padding: 10px;">
-                            <div style="font-size: 12px; color: #f39c12; font-weight: bold;">📐 花到 <span id="lifeDisplay">85</span> 歲</div>
-                            <div style="font-size: 16px; color: #f39c12; font-weight: bold; margin: 4px 0;">
+                        <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid #F59E0B; border-radius: 8px; padding: 10px;">
+                            <div style="font-size: 12px; color: #F59E0B; font-weight: bold;">📐 花到 <span id="lifeDisplay">85</span> 歲</div>
+                            <div style="font-size: 16px; color: #F59E0B; font-weight: bold; margin: 4px 0;">
                                 月花 <span id="exactMonthlyDisplay">--</span>
                             </div>
-                            <div style="font-size: 12px; color: #f39c12; opacity: 0.9;">
+                            <div style="font-size: 12px; color: #F59E0B; opacity: 0.9;">
                                 共 <span id="retirePeriodDisplay2">--</span> 年
                             </div>
                         </div>
@@ -2327,7 +2353,7 @@
 
                     <!-- 同步現金流按鈕 -->
                     <div class="cashflow-sync-section" id="cashflowSyncSection" style="display: none;">
-                        <div style="background: rgba(241, 196, 15, 0.1); border: 1px solid var(--color-warning); border-radius: 8px; padding: 10px; margin-top: 10px;">
+                        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--color-warning); border-radius: 8px; padding: 10px; margin-top: 10px;">
                             <div style="font-size: 12px; color: var(--color-warning); margin-bottom: 8px;">
                                 ⚠️ 現金流有變更，尚未同步到 Sheet
                             </div>
@@ -2354,7 +2380,7 @@
                     <div class="tool-section">
                         <h4>🔗 Sheet 連接設定</h4>
                         <div class="form-group" style="margin-bottom: 10px;">
-                            <label>Apps Script URL <span id="connectionStatus" style="font-size: 11px;"></span></label>
+                            <label>Apps Script URL <span id="connectionStatus" style="font-size: 12px;"></span></label>
                             <input type="text" id="appsScriptUrl" placeholder="貼上部署後的網址" style="font-size: 13px;">
                         </div>
                         <button class="btn btn-secondary" onclick="testConnection()" id="testConnBtn" style="width: 100%; margin-bottom: 8px;">
@@ -2380,7 +2406,7 @@
                             </div>
                         </details>
 
-                        <details style="margin-top: 10px; font-size: 11px;">
+                        <details style="margin-top: 10px; font-size: 12px;">
                             <summary style="cursor: pointer; color: var(--color-text-muted);">
                                 📖 首次設定說明
                             </summary>
@@ -2535,20 +2561,20 @@
 
             // 圖表顏色（對應 CSS 變數）
             COLORS: {
-                primary: '#00d4ff',
-                success: '#2ecc71',
-                warning: '#f39c12',
-                danger: '#e74c3c',
-                purple: '#9b59b6',
-                muted: '#95a5a6'
+                primary: '#38BDF8',
+                success: '#22C55E',
+                warning: '#F59E0B',
+                danger: '#EF4444',
+                purple: '#A78BFA',
+                muted: '#94A3B8'
             },
 
             // 策略配置
             STRATEGIES: {
-                none: { name: '🚫 不買房', color: '#00d4ff' },
-                buy: { name: '🏡 買房', color: '#2ecc71' },
-                rent: { name: '🏢 終身租房', color: '#9b59b6' },
-                mixed: { name: '🔄 先租後買', color: '#f39c12' }
+                none: { name: '🚫 不買房', color: '#38BDF8' },
+                buy: { name: '🏡 買房', color: '#22C55E' },
+                rent: { name: '🏢 終身租房', color: '#A78BFA' },
+                mixed: { name: '🔄 先租後買', color: '#F59E0B' }
             }
         };
 
@@ -2756,6 +2782,7 @@
         // 支援參數：
         //   - sheet: Google Sheet ID
         //   - user: 用戶 ID (hey/judy/或自訂)
+        //   - gas: Apps Script URL (寫入用)
         function applyUrlParams() {
             const params = new URLSearchParams(window.location.search);
 
@@ -2764,6 +2791,13 @@
             if (sheetParam) {
                 Utils.setInputValue('sheetId', sheetParam);
                 localStorage.setItem('investmentSheetId', sheetParam);
+            }
+
+            // Apps Script URL
+            const gasParam = params.get('gas');
+            if (gasParam) {
+                Utils.setInputValue('appsScriptUrl', gasParam);
+                localStorage.setItem('appsScriptUrl', gasParam);
             }
 
             // 用戶選擇（支援別名：me → hey）
@@ -2790,6 +2824,8 @@
             const params = new URLSearchParams();
             params.set('sheet', sheetId);
             params.set('user', state.currentUser);
+            const gasUrl = document.getElementById('appsScriptUrl').value.trim();
+            if (gasUrl) params.set('gas', gasUrl);
 
             return baseUrl + '?' + params.toString();
         }
